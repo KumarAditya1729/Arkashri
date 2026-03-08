@@ -1,0 +1,163 @@
+{
+  "workflow_id": "environmental_audit_v1",
+  "audit_type": "environmental_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "internal_or_external_environmental_auditor",
+    "what": "environmental_compliance_and_impact",
+    "when": "annual_or_regulator_mandated"
+  },
+  "objective": "Assess environmental compliance, emissions performance, and environmental risk controls.",
+  "scope_fields": [
+    "facility_list",
+    "permit_registry",
+    "emission_sources",
+    "waste_streams",
+    "sampling_labs",
+    "audit_period"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Permit And Risk Planning",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Confirm applicable permits and consent conditions.",
+          "owner_role": "Environmental Audit Lead",
+          "outputs": ["Permit applicability matrix"],
+          "evidence": ["Permit copies", "Regulatory condition list"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Prepare inspection and sampling plan for critical sources.",
+          "owner_role": "Environmental Auditor",
+          "outputs": ["Inspection plan", "Sampling schedule"],
+          "evidence": ["Site risk map", "Sampling protocol"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Site Inspection And Sampling",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Inspect facilities for storage, handling, and emission controls.",
+          "owner_role": "Environmental Auditor",
+          "outputs": ["Inspection observations"],
+          "evidence": ["Inspection photos", "Checklist records"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Collect and verify air, water, and waste quality samples.",
+          "owner_role": "Environmental Auditor",
+          "outputs": ["Sample test results"],
+          "evidence": ["Lab reports", "Chain-of-sample log"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Compliance And Impact Reporting",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Compare measured values to permit and legal limits.",
+          "owner_role": "Environmental Audit Manager",
+          "outputs": ["Limit compliance matrix"],
+          "evidence": ["Lab comparison table"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Document breaches, corrective actions, and improvement roadmap.",
+          "owner_role": "Environmental Audit Manager",
+          "outputs": ["Environmental findings report"],
+          "evidence": ["Corrective action plan"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Corrective Action Validation",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Retest corrected non-compliance points.",
+          "owner_role": "Environmental Auditor",
+          "outputs": ["Retest report"],
+          "evidence": ["Follow-up sampling results"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Archive environmental audit dossier with immutable references.",
+          "owner_role": "Compliance PMO",
+          "outputs": ["Archived dossier"],
+          "evidence": ["Archive manifest", "Hash reference"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Permit and consent documents", "required": true, "source_system": "Compliance DMS"},
+    {"id": "E2", "description": "Site inspection records", "required": true, "source_system": "EHS Tool"},
+    {"id": "E3", "description": "Lab sample reports", "required": true, "source_system": "Lab Portal"},
+    {"id": "E4", "description": "Waste disposal manifests", "required": true, "source_system": "Waste Tracking System"},
+    {"id": "E5", "description": "Final environmental audit report", "required": true, "source_system": "DMS"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Permit Condition Compliance",
+      "method": "Checklist + Observation",
+      "sample_rule": "100% active permits",
+      "steps": [
+        "List all permit conditions by facility.",
+        "Verify evidence of compliance for each condition.",
+        "Classify and escalate non-compliance items."
+      ],
+      "pass_condition": "No critical permit non-compliance remains unresolved."
+    },
+    {
+      "script_id": "T2",
+      "name": "Emission Threshold Test",
+      "method": "Sampling and Comparison",
+      "sample_rule": "All major emission sources",
+      "steps": [
+        "Collect representative samples per protocol.",
+        "Compare measured values to legal limits.",
+        "Validate deviations with repeat samples if required."
+      ],
+      "pass_condition": "Emission values remain within permitted limits or deviations are reported."
+    },
+    {
+      "script_id": "T3",
+      "name": "Waste Chain Verification",
+      "method": "Traceability",
+      "sample_rule": "All hazardous waste streams",
+      "steps": [
+        "Trace waste generation to final disposal manifest.",
+        "Verify transporter and disposal authorization.",
+        "Flag documentation breaks and illegal disposal risk."
+      ],
+      "pass_condition": "Complete traceability exists for hazardous waste handling."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Permit And Scope Summary", "required": true},
+    {"id": "R2", "title": "Inspection Findings", "required": true},
+    {"id": "R3", "title": "Sampling And Limit Comparison", "required": true},
+    {"id": "R4", "title": "Non-Compliance And Corrective Actions", "required": true},
+    {"id": "R5", "title": "Follow-Up Plan", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "All permits mapped and reviewed.", "evidence_required": ["Permit matrix"]},
+    {"id": "G2", "criteria": "Inspection and sampling completed.", "evidence_required": ["Inspection logs", "Lab reports"]},
+    {"id": "G3", "criteria": "Corrective actions assigned with due dates.", "evidence_required": ["CAPA plan"]},
+    {"id": "G4", "criteria": "Retest evidence confirms closure of critical issues.", "evidence_required": ["Retest report"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Permit Compliance Rate", "formula": "CompliantConditions / TotalConditions", "target": ">= 0.98"},
+    {"id": "K2", "name": "Critical Environmental Finding Closure", "formula": "CriticalClosed / CriticalRaised", "target": ">= 0.95"}
+  ]
+}

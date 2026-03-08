@@ -1,0 +1,163 @@
+{
+  "workflow_id": "external_audit_v1",
+  "audit_type": "external_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "external",
+    "what": "independent_assurance",
+    "when": "annual_or_interim"
+  },
+  "objective": "Provide independent assurance to shareholders and stakeholders on financial reporting reliability.",
+  "scope_fields": [
+    "entity_list",
+    "reporting_deadline",
+    "independence_status",
+    "engagement_letter_ref",
+    "materiality_threshold",
+    "group_components"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Engagement Setup",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Complete engagement acceptance and independence checks.",
+          "owner_role": "Engagement Partner",
+          "outputs": ["Acceptance memo", "Independence confirmation"],
+          "evidence": ["Conflict check logs", "Signed declarations"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Define audit strategy and significant risk areas.",
+          "owner_role": "Audit Manager",
+          "outputs": ["Audit strategy document", "Risk-based plan"],
+          "evidence": ["Planning meeting minutes", "Industry risk analysis"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Independent Evidence Gathering",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Obtain external confirmations and corroborative evidence.",
+          "owner_role": "External Audit Team",
+          "outputs": ["Confirmation tracker", "Evidence pack"],
+          "evidence": ["Bank confirmations", "Legal letters"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Evaluate significant estimates, judgments, and related party disclosures.",
+          "owner_role": "External Audit Team",
+          "outputs": ["Estimate challenge memo"],
+          "evidence": ["Management assumptions", "Sensitivity analysis"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Opinion Formation",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Resolve open items and review unadjusted differences.",
+          "owner_role": "Audit Manager",
+          "outputs": ["Open item closure log"],
+          "evidence": ["Client responses", "Adjustment tracker"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Draft and finalize independent audit opinion.",
+          "owner_role": "Engagement Partner",
+          "outputs": ["Signed independent opinion"],
+          "evidence": ["Partner sign-off"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Regulatory And Archive Closure",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Issue final report to shareholders and governance body.",
+          "owner_role": "Engagement Partner",
+          "outputs": ["Issued report"],
+          "evidence": ["Dispatch acknowledgement"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Lock engagement files and preserve retention-compliant records.",
+          "owner_role": "Audit PMO",
+          "outputs": ["Locked workpaper archive"],
+          "evidence": ["Archive manifest", "Hash entry"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Engagement letter and independence declarations", "required": true, "source_system": "DMS"},
+    {"id": "E2", "description": "External confirmations", "required": true, "source_system": "Confirmation Portal"},
+    {"id": "E3", "description": "Estimate evaluation workpapers", "required": true, "source_system": "Audit Workpaper Tool"},
+    {"id": "E4", "description": "Management representation letter", "required": true, "source_system": "DMS"},
+    {"id": "E5", "description": "Signed independent report", "required": true, "source_system": "DMS"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Confirmation Completeness",
+      "method": "Third-Party Evidence",
+      "sample_rule": "100% high-value balances",
+      "steps": [
+        "Send confirmations directly to counterparties.",
+        "Track responses and follow-up non-responses.",
+        "Perform alternate procedures for non-responses."
+      ],
+      "pass_condition": "All material balances corroborated by independent evidence."
+    },
+    {
+      "script_id": "T2",
+      "name": "Estimate Challenge",
+      "method": "Reasonableness Testing",
+      "sample_rule": "All significant estimates",
+      "steps": [
+        "Recompute management estimate models.",
+        "Apply independent assumptions and sensitivities.",
+        "Document variance and challenge outcomes."
+      ],
+      "pass_condition": "No unsupported material estimate remains unadjusted."
+    },
+    {
+      "script_id": "T3",
+      "name": "Related Party Disclosure Test",
+      "method": "Disclosure Testing",
+      "sample_rule": "100% related party transactions above threshold",
+      "steps": [
+        "Extract related party register and transaction ledger.",
+        "Match disclosures to underlying transactions.",
+        "Verify approval and arm's length evidence."
+      ],
+      "pass_condition": "Material related party disclosures are complete and accurate."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Independent Auditor Report", "required": true},
+    {"id": "R2", "title": "Basis For Opinion", "required": true},
+    {"id": "R3", "title": "Key Audit Matters", "required": true},
+    {"id": "R4", "title": "Other Information", "required": false},
+    {"id": "R5", "title": "Responsibilities", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Independence documented and valid.", "evidence_required": ["Independence declarations"]},
+    {"id": "G2", "criteria": "Material external evidence obtained.", "evidence_required": ["Confirmation tracker"]},
+    {"id": "G3", "criteria": "Partner review complete.", "evidence_required": ["Partner review sign-off"]},
+    {"id": "G4", "criteria": "Final signed opinion issued and archived.", "evidence_required": ["Signed report", "Archive manifest"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Open Item Burn-Down", "formula": "OpenItemsClosed / OpenItemsRaised", "target": ">= 0.98"},
+    {"id": "K2", "name": "Confirmation Response Rate", "formula": "Responses / ConfirmationsSent", "target": ">= 0.85"}
+  ]
+}

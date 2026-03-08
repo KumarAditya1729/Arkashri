@@ -1,0 +1,163 @@
+{
+  "workflow_id": "tax_audit_v1",
+  "audit_type": "tax_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "tax_auditor_or_authority",
+    "what": "tax_return_and_liability_accuracy",
+    "when": "periodical"
+  },
+  "objective": "Verify tax computation, reporting, and filing accuracy across direct and indirect tax obligations.",
+  "scope_fields": [
+    "tax_jurisdiction",
+    "tax_period",
+    "applicable_tax_laws",
+    "returns_in_scope",
+    "related_party_transactions",
+    "filing_deadlines"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Tax Scope Planning",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Confirm legal thresholds and applicable audit form requirements.",
+          "owner_role": "Tax Audit Lead",
+          "outputs": ["Applicability memo"],
+          "evidence": ["Threshold analysis", "Legal references"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Define tax reconciliation strategy between books and returns.",
+          "owner_role": "Tax Auditor",
+          "outputs": ["Reconciliation plan"],
+          "evidence": ["Return mapping matrix"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Computation And Compliance Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Reconcile turnover, expenses, and tax bases to filed returns.",
+          "owner_role": "Tax Auditor",
+          "outputs": ["Book-to-return reconciliation"],
+          "evidence": ["GL extracts", "Filed return copies"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Test deductions, credits, transfer pricing, and withholding compliance.",
+          "owner_role": "Tax Auditor",
+          "outputs": ["Tax test results", "Exposure summary"],
+          "evidence": ["Invoice samples", "TP documentation", "Withholding records"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Tax Reporting",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Quantify under-reporting or disallowance risk.",
+          "owner_role": "Tax Manager",
+          "outputs": ["Risk quantification sheet"],
+          "evidence": ["Difference analysis"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Prepare and finalize tax audit report in required format.",
+          "owner_role": "Tax Manager",
+          "outputs": ["Tax audit report"],
+          "evidence": ["Report sign-off", "Form validation"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Filing And Record Retention",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "File tax audit report and retain acknowledgement.",
+          "owner_role": "Tax Compliance Officer",
+          "outputs": ["Filing acknowledgement"],
+          "evidence": ["Portal receipt"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Archive computation workpapers and evidence hashes.",
+          "owner_role": "Tax PMO",
+          "outputs": ["Tax audit archive"],
+          "evidence": ["Archive manifest", "Hash chain entry"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Filed returns and computation sheets", "required": true, "source_system": "Tax Engine"},
+    {"id": "E2", "description": "GL and trial balance extracts", "required": true, "source_system": "ERP"},
+    {"id": "E3", "description": "Invoice and deduction support", "required": true, "source_system": "DMS"},
+    {"id": "E4", "description": "Transfer pricing documentation", "required": false, "source_system": "Tax DMS"},
+    {"id": "E5", "description": "Final filed tax audit report", "required": true, "source_system": "Tax Filing Portal"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Book-To-Return Reconciliation",
+      "method": "Reconciliation",
+      "sample_rule": "100% return line items",
+      "steps": [
+        "Map each return field to accounting source.",
+        "Recompute tax base from books.",
+        "Investigate unexplained differences."
+      ],
+      "pass_condition": "All material differences are resolved or disclosed."
+    },
+    {
+      "script_id": "T2",
+      "name": "Deduction Allowability",
+      "method": "Transaction Sampling",
+      "sample_rule": "Risk-based sample of high-value deductions",
+      "steps": [
+        "Select deduction claims by risk and value.",
+        "Verify legal allowability and documentation.",
+        "Flag disallowable items with amount impact."
+      ],
+      "pass_condition": "No unsupported material deduction claim remains."
+    },
+    {
+      "script_id": "T3",
+      "name": "Withholding Compliance",
+      "method": "Control + Substantive",
+      "sample_rule": "All payment categories with withholding obligation",
+      "steps": [
+        "Recompute withholding per payment type.",
+        "Validate remittance timing and challans.",
+        "Track short-deduction and late-payment cases."
+      ],
+      "pass_condition": "Withholding and remittance comply with law and deadlines."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Tax Applicability And Scope", "required": true},
+    {"id": "R2", "title": "Reconciliation Summary", "required": true},
+    {"id": "R3", "title": "Adjustments And Exposure", "required": true},
+    {"id": "R4", "title": "Required Tax Form Disclosures", "required": true},
+    {"id": "R5", "title": "Filing Confirmation", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Applicability validated against threshold.", "evidence_required": ["Applicability memo"]},
+    {"id": "G2", "criteria": "Reconciliation complete for all returns.", "evidence_required": ["Reconciliation workbook"]},
+    {"id": "G3", "criteria": "Exposure quantified and approved.", "evidence_required": ["Exposure summary"]},
+    {"id": "G4", "criteria": "Report filed and acknowledged.", "evidence_required": ["Portal acknowledgement"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Return Accuracy Rate", "formula": "AccurateReturnFields / TotalReturnFields", "target": ">= 0.99"},
+    {"id": "K2", "name": "On-Time Filing", "formula": "ReportsFiledOnTime / ReportsDue", "target": "= 1.00"}
+  ]
+}

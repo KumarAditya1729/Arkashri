@@ -1,0 +1,163 @@
+{
+  "workflow_id": "single_audit_v1",
+  "audit_type": "single_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "independent_single_auditor",
+    "what": "federal_award_compliance",
+    "when": "annual_threshold_triggered"
+  },
+  "objective": "Verify compliance with federal award requirements and internal controls over major programs.",
+  "scope_fields": [
+    "federal_award_total",
+    "major_program_selection",
+    "uniform_guidance_version",
+    "sefa_reference",
+    "subrecipient_list",
+    "audit_year"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Major Program Planning",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Confirm single-audit applicability and prepare SEFA baseline.",
+          "owner_role": "Single Audit Lead",
+          "outputs": ["Applicability memo", "Draft SEFA"],
+          "evidence": ["Federal expenditure summaries", "Funding agreements"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Select major programs using risk-based criteria.",
+          "owner_role": "Single Audit Lead",
+          "outputs": ["Major program selection memo"],
+          "evidence": ["Risk assessment worksheet"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Compliance And Control Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Test internal controls over federal compliance requirements.",
+          "owner_role": "Single Audit Team",
+          "outputs": ["Control test results"],
+          "evidence": ["Control narratives", "Test samples"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Test direct compliance for each major program and subrecipient monitoring.",
+          "owner_role": "Single Audit Team",
+          "outputs": ["Compliance test outcomes", "Questioned cost log"],
+          "evidence": ["Award transactions", "Subrecipient reports"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Federal Reporting Package",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Finalize SEFA and summarize findings by program.",
+          "owner_role": "Single Audit Manager",
+          "outputs": ["Final SEFA", "Findings schedule"],
+          "evidence": ["SEFA tie-out workbook"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Prepare reporting package and Data Collection Form.",
+          "owner_role": "Single Audit Manager",
+          "outputs": ["Federal reporting package"],
+          "evidence": ["Submission-ready package"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Submission And Follow-Up",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Submit package to Federal Audit Clearinghouse.",
+          "owner_role": "Compliance Officer",
+          "outputs": ["FAC submission receipt"],
+          "evidence": ["Portal acknowledgement"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Track corrective action plan for findings.",
+          "owner_role": "Program Compliance PMO",
+          "outputs": ["CAP follow-up tracker"],
+          "evidence": ["Corrective action updates", "Retest records"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "SEFA draft and final", "required": true, "source_system": "Grant Accounting System"},
+    {"id": "E2", "description": "Major program risk assessment", "required": true, "source_system": "Audit Workpaper Tool"},
+    {"id": "E3", "description": "Compliance test workpapers", "required": true, "source_system": "Audit Workpaper Tool"},
+    {"id": "E4", "description": "Subrecipient monitoring evidence", "required": true, "source_system": "Grant Management Platform"},
+    {"id": "E5", "description": "FAC submission receipt", "required": true, "source_system": "Federal Audit Clearinghouse"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "SEFA Completeness",
+      "method": "Reconciliation",
+      "sample_rule": "100% federal award lines",
+      "steps": [
+        "Tie SEFA amounts to grant ledger and trial balance.",
+        "Validate CFDA/assistance listing identifiers.",
+        "Investigate unmatched lines or coding errors."
+      ],
+      "pass_condition": "SEFA fully reconciles to books with no material mismatch."
+    },
+    {
+      "script_id": "T2",
+      "name": "Major Program Compliance",
+      "method": "Compliance Attribute Testing",
+      "sample_rule": "Program-specific compliance requirements",
+      "steps": [
+        "Select transactions for each compliance attribute.",
+        "Verify allowability, eligibility, and documentation.",
+        "Calculate questioned costs for failures."
+      ],
+      "pass_condition": "Compliance exceptions are fully reported with questioned costs."
+    },
+    {
+      "script_id": "T3",
+      "name": "Subrecipient Monitoring",
+      "method": "Monitoring Control Test",
+      "sample_rule": "All high-risk subrecipients",
+      "steps": [
+        "Review monitoring plan and execution evidence.",
+        "Confirm timely review of subrecipient reports.",
+        "Validate corrective actions for subrecipient findings."
+      ],
+      "pass_condition": "Monitoring controls operate effectively for high-risk subrecipients."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "SEFA", "required": true},
+    {"id": "R2", "title": "Auditor Reports On Compliance", "required": true},
+    {"id": "R3", "title": "Schedule Of Findings", "required": true},
+    {"id": "R4", "title": "Questioned Costs", "required": true},
+    {"id": "R5", "title": "Corrective Action Plan", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "SEFA finalized and reconciled.", "evidence_required": ["SEFA tie-out"]},
+    {"id": "G2", "criteria": "Major program tests complete.", "evidence_required": ["Compliance workpapers"]},
+    {"id": "G3", "criteria": "Reporting package prepared and reviewed.", "evidence_required": ["Package review sign-off"]},
+    {"id": "G4", "criteria": "FAC submission complete.", "evidence_required": ["FAC receipt"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Major Program Coverage", "formula": "MajorProgramsTested / MajorProgramsSelected", "target": "= 1.00"},
+    {"id": "K2", "name": "FAC On-Time Submission", "formula": "SubmittedOnTime ? 1 : 0", "target": "= 1"}
+  ]
+}

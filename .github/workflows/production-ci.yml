@@ -1,0 +1,72 @@
+name: Production CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  verify-core:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: arkashri
+          POSTGRES_PASSWORD: arkashri
+          POSTGRES_DB: arkashri
+        ports:
+          - 5440:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: 'pip'
+        
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio ruff mypy
+        pip install .
+        
+    - name: Static Analysis (Ruff)
+      run: |
+        ruff check arkashri/ tests/ scripts/
+
+    - name: Type Checking (Mypy)
+      run: |
+        mypy arkashri/ || true
+        
+    - name: Database Migration (Alembic)
+      env:
+        DATABASE_URL: postgresql+asyncpg://arkashri:arkashri@localhost:5440/arkashri
+      run: |
+        alembic upgrade head
+        
+    - name: Execution Testing (Pytest)
+      env:
+        DATABASE_URL: postgresql+asyncpg://arkashri:arkashri@localhost:5440/arkashri
+        REDIS_URL: redis://localhost:6380/0
+      run: |
+        pytest tests/

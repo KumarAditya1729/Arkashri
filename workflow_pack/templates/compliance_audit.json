@@ -1,0 +1,163 @@
+{
+  "workflow_id": "compliance_audit_v1",
+  "audit_type": "compliance_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "internal_or_external",
+    "what": "regulatory_and_policy_adherence",
+    "when": "continuous_or_periodical"
+  },
+  "objective": "Verify adherence to applicable laws, regulations, contractual requirements, and internal policies.",
+  "scope_fields": [
+    "jurisdiction",
+    "regulation_catalog",
+    "policy_catalog_version",
+    "in_scope_processes",
+    "in_scope_systems",
+    "assessment_period"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Obligation Mapping",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Build obligations register by law, rule, and internal policy.",
+          "owner_role": "Compliance Lead",
+          "outputs": ["Obligations register"],
+          "evidence": ["Regulatory mapping file", "Policy cross-reference"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Map each obligation to control owner and evidence source.",
+          "owner_role": "Compliance Analyst",
+          "outputs": ["Control-owner mapping"],
+          "evidence": ["RACI matrix", "System evidence map"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Control And Incident Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Test design and operation of compliance controls.",
+          "owner_role": "Compliance Auditor",
+          "outputs": ["Control test results"],
+          "evidence": ["Sample control runs", "Configuration snapshots"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Validate incident handling against regulatory timelines.",
+          "owner_role": "Compliance Auditor",
+          "outputs": ["Incident compliance results"],
+          "evidence": ["Incident tickets", "Notification timestamps"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Breach Assessment And Reporting",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Classify non-compliance findings by legal and financial impact.",
+          "owner_role": "Compliance Manager",
+          "outputs": ["Breach severity register"],
+          "evidence": ["Legal impact notes", "Penalty exposure estimate"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Draft remediation plan and reporting obligations.",
+          "owner_role": "Compliance Manager",
+          "outputs": ["Remediation plan", "Regulatory reporting plan"],
+          "evidence": ["Management commitments", "Draft notices if required"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Remediation Validation",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Retest remediated controls and verify closure evidence.",
+          "owner_role": "Compliance Auditor",
+          "outputs": ["Retest results"],
+          "evidence": ["Before/after control evidence"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Close engagement and archive compliance evidence package.",
+          "owner_role": "Compliance PMO",
+          "outputs": ["Closure certificate", "Archive hash manifest"],
+          "evidence": ["Final report", "Immutable archive reference"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Obligations register", "required": true, "source_system": "GRC"},
+    {"id": "E2", "description": "Control-owner mapping", "required": true, "source_system": "GRC"},
+    {"id": "E3", "description": "Incident and breach logs", "required": true, "source_system": "ITSM"},
+    {"id": "E4", "description": "Control test workpapers", "required": true, "source_system": "Audit Workpaper Tool"},
+    {"id": "E5", "description": "Final compliance report", "required": true, "source_system": "DMS"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Obligation Coverage Test",
+      "method": "Traceability",
+      "sample_rule": "100% applicable obligations",
+      "steps": [
+        "List all obligations in scope.",
+        "Confirm each obligation maps to at least one control.",
+        "Flag unmapped obligations as critical gaps."
+      ],
+      "pass_condition": "All applicable obligations are control-mapped."
+    },
+    {
+      "script_id": "T2",
+      "name": "Regulatory Notification Timeliness",
+      "method": "Timestamp Verification",
+      "sample_rule": "All notifiable incidents",
+      "steps": [
+        "Extract detection and notification timestamps.",
+        "Compare elapsed time with legal requirement.",
+        "Escalate late notifications with impact note."
+      ],
+      "pass_condition": "No unreported late notification in scope."
+    },
+    {
+      "script_id": "T3",
+      "name": "Policy Adherence Sampling",
+      "method": "Sample Transaction Test",
+      "sample_rule": "Risk-weighted random sample",
+      "steps": [
+        "Select sample transactions linked to key policies.",
+        "Verify mandatory policy approvals and records.",
+        "Record policy breach with owner and reason."
+      ],
+      "pass_condition": "Policy adherence exceeds approved threshold."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Applicable Regulations", "required": true},
+    {"id": "R2", "title": "Compliance Test Results", "required": true},
+    {"id": "R3", "title": "Violations And Exposure", "required": true},
+    {"id": "R4", "title": "Remediation Commitments", "required": true},
+    {"id": "R5", "title": "Retest And Closure Status", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Obligations register finalized.", "evidence_required": ["Approved obligations register"]},
+    {"id": "G2", "criteria": "All planned compliance tests completed.", "evidence_required": ["Test execution log"]},
+    {"id": "G3", "criteria": "Required regulatory reports submitted.", "evidence_required": ["Submission receipts"]},
+    {"id": "G4", "criteria": "Remediation closure validated for due items.", "evidence_required": ["Retest evidence"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Control Compliance Rate", "formula": "CompliantControls / ControlsTested", "target": ">= 0.95"},
+    {"id": "K2", "name": "Notification SLA Compliance", "formula": "OnTimeNotifications / NotifiableIncidents", "target": "= 1.00"}
+  ]
+}

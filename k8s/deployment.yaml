@@ -1,0 +1,138 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arkashri-prod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arkashri-api
+  namespace: arkashri-prod
+  labels:
+    app: arkashri-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: arkashri-api
+  template:
+    metadata:
+      labels:
+        app: arkashri-api
+    spec:
+      containers:
+      - name: api
+        image: arkashri:latest
+        imagePullPolicy: IfNotPresent
+        command: ["uvicorn", "arkashri.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+        livenessProbe:
+          httpGet:
+            path: /api/v1/system/healthz
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/v1/system/healthz
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        envFrom:
+        - secretRef:
+            name: arkashri-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: arkashri-api-svc
+  namespace: arkashri-prod
+spec:
+  selector:
+    app: arkashri-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: arkashri-api-hpa
+  namespace: arkashri-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: arkashri-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arkashri-worker
+  namespace: arkashri-prod
+  labels:
+    app: arkashri-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: arkashri-worker
+  template:
+    metadata:
+      labels:
+        app: arkashri-worker
+    spec:
+      containers:
+      - name: worker
+        image: arkashri:latest
+        imagePullPolicy: IfNotPresent
+        command: ["arq", "arkashri.worker.WorkerSettings"]
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+          limits:
+            cpu: "4"
+            memory: "8Gi"
+        envFrom:
+        - secretRef:
+            name: arkashri-secrets
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: arkashri-worker-hpa
+  namespace: arkashri-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: arkashri-worker
+  minReplicas: 2
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80

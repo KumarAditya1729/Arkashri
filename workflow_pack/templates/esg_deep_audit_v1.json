@@ -1,0 +1,343 @@
+{
+    "workflow_id": "esg_deep_audit_v1",
+    "audit_type": "environmental_audit",
+    "version": "1.0.0",
+    "classification": {
+        "who": "esg_assurance_team",
+        "what": "material_esg_risk_and_compliance_audit",
+        "when": "annual_or_event_triggered"
+    },
+    "objective": "Provide independent assurance over ESG disclosures, quantify climate and social risk exposures, and verify regulatory compliance on all Scope 1, 2, and 3 emissions and governance metrics.",
+    "scope_fields": [
+        "carbon_footprint_scope_1_mtco2e",
+        "carbon_footprint_scope_2_mtco2e",
+        "carbon_footprint_scope_3_mtco2e",
+        "board_diversity_percentage",
+        "supply_chain_transparency_index",
+        "active_regulatory_fines",
+        "reporting_framework",
+        "baseline_period"
+    ],
+    "risk_engine_config": {
+        "weight_set_reference": "esg_standard_weights_v1",
+        "formula_reference": "esg_composite_formula_v1",
+        "component_caps": {
+            "DETERMINISTIC": 0.60,
+            "ML": 0.30,
+            "TREND": 0.10
+        },
+        "deterministic_rules": [
+            {
+                "rule_key": "esg_active_regulatory_fines",
+                "expression": {
+                    "field": "esg.active_regulatory_fines",
+                    "op": "eq",
+                    "value": true
+                },
+                "signal_value": 1.0,
+                "severity_floor": 0.80,
+                "weight": 0.30,
+                "description": "Active regulatory penalties indicate material compliance failure."
+            },
+            {
+                "rule_key": "esg_scope3_high_intensity",
+                "expression": {
+                    "field": "esg.carbon_footprint_scope_3_mtco2e",
+                    "op": "gt",
+                    "value": 500000
+                },
+                "signal_value": 0.80,
+                "severity_floor": 0.50,
+                "weight": 0.20,
+                "description": "Scope 3 emissions exceeding 500,000 MT CO2e trigger heightened assurance procedures."
+            },
+            {
+                "rule_key": "esg_low_board_diversity",
+                "expression": {
+                    "field": "esg.board_diversity_percentage",
+                    "op": "lt",
+                    "value": 30
+                },
+                "signal_value": 0.50,
+                "severity_floor": 0.30,
+                "weight": 0.10,
+                "description": "Board diversity below 30% fails TCFD governance best practice threshold."
+            },
+            {
+                "rule_key": "esg_opaque_supply_chain",
+                "expression": {
+                    "field": "esg.supply_chain_transparency_index",
+                    "op": "lt",
+                    "value": 0.40
+                },
+                "signal_value": 0.70,
+                "severity_floor": 0.40,
+                "weight": 0.15,
+                "description": "Supply chain transparency index below 0.4 indicates unacceptable third-party ESG opacity."
+            }
+        ],
+        "ml_signals": [
+            {
+                "signal_key": "esg_sentiment_score",
+                "description": "NLP-derived sentiment on ESG disclosures vs. actual data filed (greenwashing detector).",
+                "weight": 0.20,
+                "lower_bound": 0.0,
+                "upper_bound": 1.0
+            },
+            {
+                "signal_key": "esg_peer_deviation_score",
+                "description": "Isolation Forest anomaly score measuring deviation from sector-peer ESG metric distributions.",
+                "weight": 0.10,
+                "lower_bound": 0.0,
+                "upper_bound": 1.0
+            }
+        ]
+    },
+    "phases": [
+        {
+            "phase_id": "plan",
+            "name": "ESG Risk Assessment",
+            "steps": [
+                {
+                    "step_id": "P1",
+                    "action": "Identify material ESG topics using double materiality matrix.",
+                    "owner_role": "ESG Lead",
+                    "outputs": [
+                        "Double materiality matrix"
+                    ],
+                    "evidence": [
+                        "Stakeholder impact surveys",
+                        "Financial impact models"
+                    ]
+                },
+                {
+                    "step_id": "P2",
+                    "action": "Confirm reporting framework alignment (GRI, CSRD, TCFD, ISSB).",
+                    "owner_role": "ESG Lead",
+                    "outputs": [
+                        "Framework alignment memo"
+                    ],
+                    "evidence": [
+                        "Prior year ESG report",
+                        "Regulatory notifications"
+                    ]
+                }
+            ]
+        },
+        {
+            "phase_id": "fieldwork",
+            "name": "Metrics Validation",
+            "steps": [
+                {
+                    "step_id": "F1",
+                    "action": "Validate Scope 1, 2, and 3 emissions data against source systems.",
+                    "owner_role": "ESG Assurance Analyst",
+                    "outputs": [
+                        "Emissions data reconciliation"
+                    ],
+                    "evidence": [
+                        "Utility invoices",
+                        "Fuel consumption logs",
+                        "Supplier GHG submissions"
+                    ]
+                },
+                {
+                    "step_id": "F2",
+                    "action": "Assess board composition, diversity metrics, and governance disclosures.",
+                    "owner_role": "ESG Assurance Analyst",
+                    "outputs": [
+                        "Governance assessment memo"
+                    ],
+                    "evidence": [
+                        "Board register",
+                        "Skills matrix",
+                        "Remuneration committee reports"
+                    ]
+                },
+                {
+                    "step_id": "F3",
+                    "action": "Review supply chain transparency index and third-party due diligence records.",
+                    "owner_role": "ESG Assurance Analyst",
+                    "outputs": [
+                        "Supply chain risk register"
+                    ],
+                    "evidence": [
+                        "Supplier audit reports",
+                        "Ethical sourcing certifications"
+                    ]
+                }
+            ]
+        },
+        {
+            "phase_id": "report",
+            "name": "Assurance Opinion",
+            "steps": [
+                {
+                    "step_id": "R1",
+                    "action": "Prepare limited or reasonable assurance opinion per ISAE 3000.",
+                    "owner_role": "ESG Lead",
+                    "outputs": [
+                        "Assurance report draft"
+                    ],
+                    "evidence": [
+                        "Management representation letter",
+                        "Audit committee minutes"
+                    ]
+                }
+            ]
+        },
+        {
+            "phase_id": "close",
+            "name": "Regulatory Filing",
+            "steps": [
+                {
+                    "step_id": "C1",
+                    "action": "File signed ESG assurance statement with regulatory bodies.",
+                    "owner_role": "ESG Lead",
+                    "outputs": [
+                        "Signed ESG assurance report"
+                    ],
+                    "evidence": [
+                        "Filing acknowledgement",
+                        "WORM seal bundle"
+                    ]
+                }
+            ]
+        }
+    ],
+    "evidence_checklist": [
+        {
+            "id": "E1",
+            "description": "Double materiality matrix",
+            "required": true,
+            "source_system": "ESG Platform"
+        },
+        {
+            "id": "E2",
+            "description": "Scope 1, 2, 3 emission calculations",
+            "required": true,
+            "source_system": "Carbon Accounting System"
+        },
+        {
+            "id": "E3",
+            "description": "Board composition certification",
+            "required": true,
+            "source_system": "Company Secretariat"
+        },
+        {
+            "id": "E4",
+            "description": "Supply chain due diligence records",
+            "required": true,
+            "source_system": "Procurement System"
+        },
+        {
+            "id": "E5",
+            "description": "Signed assurance opinion",
+            "required": true,
+            "source_system": "Audit Management"
+        }
+    ],
+    "test_scripts": [
+        {
+            "script_id": "T1",
+            "name": "Greenwashing Detection",
+            "method": "NLP Semantic Analysis",
+            "sample_rule": "All public ESG disclosures",
+            "steps": [
+                "Extract ESG claims from public sustainability report.",
+                "Cross-reference each claim against Arkashri ESGMetrics data.",
+                "Flag claims where stated values deviate from measured by > 10%."
+            ],
+            "pass_condition": "Zero material discrepancies between public claims and measured data."
+        },
+        {
+            "script_id": "T2",
+            "name": "Emissions Completeness Check",
+            "method": "Data Reconciliation",
+            "sample_rule": "100% of emission categories",
+            "steps": [
+                "Reconcile Scope 1 figures against on-site fuel and refrigerant logs.",
+                "Reconcile Scope 2 against electricity invoices and renewable energy certificates.",
+                "Reconcile Scope 3 against top 10 suppliers by spend."
+            ],
+            "pass_condition": "Unexplained variance < 2% for each scope."
+        }
+    ],
+    "report_sections": [
+        {
+            "id": "R1",
+            "title": "Materiality And Scope",
+            "required": true
+        },
+        {
+            "id": "R2",
+            "title": "Emissions Performance",
+            "required": true
+        },
+        {
+            "id": "R3",
+            "title": "Governance And Social Metrics",
+            "required": true
+        },
+        {
+            "id": "R4",
+            "title": "Greenwashing Risk Assessment",
+            "required": true
+        },
+        {
+            "id": "R5",
+            "title": "Assurance Opinion (ISAE 3000)",
+            "required": true
+        }
+    ],
+    "closure_gates": [
+        {
+            "id": "G1",
+            "criteria": "Double materiality matrix signed by audit committee.",
+            "evidence_required": [
+                "Materiality matrix"
+            ]
+        },
+        {
+            "id": "G2",
+            "criteria": "All three Scopes reconciled within tolerance.",
+            "evidence_required": [
+                "Emission reconciliation"
+            ]
+        },
+        {
+            "id": "G3",
+            "criteria": "ML greenwashing score confirmed < 0.3.",
+            "evidence_required": [
+                "ESG ML signal outputs"
+            ]
+        },
+        {
+            "id": "G4",
+            "criteria": "Assurance opinion signed and filed.",
+            "evidence_required": [
+                "Signed filing confirmation"
+            ]
+        }
+    ],
+    "kpis": [
+        {
+            "id": "K1",
+            "name": "Emissions Data Completeness",
+            "formula": "ScopesReconciled / 3",
+            "target": "= 1.00"
+        },
+        {
+            "id": "K2",
+            "name": "Greenwashing Risk Score",
+            "formula": "esg_sentiment_score (ML signal)",
+            "target": "< 0.30"
+        },
+        {
+            "id": "K3",
+            "name": "Regulatory Compliance Gate",
+            "formula": "active_regulatory_fines == false",
+            "target": "= true"
+        }
+    ]
+}

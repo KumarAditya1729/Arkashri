@@ -1,0 +1,393 @@
+{
+    "workflow_id": "forensic_risk_profile_v1",
+    "audit_type": "forensic_audit",
+    "version": "1.0.0",
+    "classification": {
+        "who": "forensic_analytics_team",
+        "what": "quantitative_fraud_risk_profiling",
+        "when": "continuous_or_triggered"
+    },
+    "objective": "Quantitatively assess fraud, money laundering, and sanctions risk using Arkashri's ForensicProfile model. Produce a statistically defensible risk score anchored to Benford's law, transaction velocity, offshore routing, UBO opacity, and sanctions hit probability.",
+    "scope_fields": [
+        "transaction_velocity_score",
+        "benfords_law_deviation",
+        "offshore_routing_instances",
+        "ubo_opacity_index",
+        "sanctions_hit_probability",
+        "population_date_range",
+        "jurisdictions_in_scope"
+    ],
+    "risk_engine_config": {
+        "weight_set_reference": "forensic_risk_weights_v1",
+        "formula_reference": "forensic_composite_formula_v1",
+        "component_caps": {
+            "DETERMINISTIC": 0.50,
+            "ML": 0.40,
+            "TREND": 0.10
+        },
+        "deterministic_rules": [
+            {
+                "rule_key": "forensic_sanctions_hit",
+                "expression": {
+                    "field": "forensic.sanctions_hit_probability",
+                    "op": "gt",
+                    "value": 0.70
+                },
+                "signal_value": 1.0,
+                "severity_floor": 0.90,
+                "weight": 0.25,
+                "description": "Sanctions hit probability above 70% is a mandatory escalation trigger under OFAC/HMT screening standards."
+            },
+            {
+                "rule_key": "forensic_offshore_routing_high",
+                "expression": {
+                    "field": "forensic.offshore_routing_instances",
+                    "op": "gt",
+                    "value": 5
+                },
+                "signal_value": 0.80,
+                "severity_floor": 0.60,
+                "weight": 0.20,
+                "description": "More than 5 offshore routing instances without documented commercial rationale is indicative of layering."
+            },
+            {
+                "rule_key": "forensic_benfords_deviation_critical",
+                "expression": {
+                    "field": "forensic.benfords_law_deviation",
+                    "op": "gt",
+                    "value": 0.15
+                },
+                "signal_value": 0.85,
+                "severity_floor": 0.55,
+                "weight": 0.15,
+                "description": "Benford's law chi-square deviation above 0.15 indicates a statistically abnormal population (fabricated or manipulated figures)."
+            },
+            {
+                "rule_key": "forensic_ubo_opacity_high",
+                "expression": {
+                    "field": "forensic.ubo_opacity_index",
+                    "op": "gt",
+                    "value": 0.60
+                },
+                "signal_value": 0.75,
+                "severity_floor": 0.50,
+                "weight": 0.10,
+                "description": "UBO opacity index above 0.6 indicates the beneficial ownership structure cannot be adequately verified."
+            }
+        ],
+        "ml_signals": [
+            {
+                "signal_key": "isolation_forest_fraud_score",
+                "description": "Isolation Forest anomaly score on full transaction population. High score = high likelihood of being a statistical outlier consistent with fraud.",
+                "weight": 0.20,
+                "lower_bound": 0.0,
+                "upper_bound": 1.0
+            },
+            {
+                "signal_key": "graph_network_risk_score",
+                "description": "GNN-derived score measuring how deeply the entity is embedded in a known high-risk transaction network (shell company rings, mule account clusters).",
+                "weight": 0.15,
+                "lower_bound": 0.0,
+                "upper_bound": 1.0
+            },
+            {
+                "signal_key": "temporal_velocity_anomaly_score",
+                "description": "Time-series anomaly score for burst transaction patterns (velocity spikes) relative to entity historical baseline.",
+                "weight": 0.05,
+                "lower_bound": 0.0,
+                "upper_bound": 1.0
+            }
+        ]
+    },
+    "phases": [
+        {
+            "phase_id": "plan",
+            "name": "Population Definition",
+            "steps": [
+                {
+                    "step_id": "P1",
+                    "action": "Define transaction population scope, date range, and entity universe.",
+                    "owner_role": "Forensic Analyst",
+                    "outputs": [
+                        "Population definition memo"
+                    ],
+                    "evidence": [
+                        "Data extraction specifications",
+                        "System access logs"
+                    ]
+                },
+                {
+                    "step_id": "P2",
+                    "action": "Ingest ForensicProfile data into Arkashri risk engine via API.",
+                    "owner_role": "Forensic Analyst",
+                    "outputs": [
+                        "Confirmed API ingest receipt"
+                    ],
+                    "evidence": [
+                        "POST /engagements/{id}/forensic response payload"
+                    ]
+                }
+            ]
+        },
+        {
+            "phase_id": "fieldwork",
+            "name": "Quantitative Risk Scoring",
+            "steps": [
+                {
+                    "step_id": "F1",
+                    "action": "Execute Benford's law analysis on all numeric financial statement fields.",
+                    "owner_role": "Forensic Data Analyst",
+                    "outputs": [
+                        "Benford chi-square report"
+                    ],
+                    "evidence": [
+                        "R/Python analysis script output",
+                        "Data population extract"
+                    ]
+                },
+                {
+                    "step_id": "F2",
+                    "action": "Run Isolation Forest on transaction population for statistical outlier scoring.",
+                    "owner_role": "Forensic Data Analyst",
+                    "outputs": [
+                        "ML anomaly score matrix"
+                    ],
+                    "evidence": [
+                        "Model inference logs",
+                        "SHAP explainability outputs"
+                    ]
+                },
+                {
+                    "step_id": "F3",
+                    "action": "Map offshore routing graph and identify jurisdiction-chain risk.",
+                    "owner_role": "Forensic Investigator",
+                    "outputs": [
+                        "Offshore routing diagram"
+                    ],
+                    "evidence": [
+                        "SWIFT/SEPA routing records",
+                        "Correspondent bank confirmations"
+                    ]
+                },
+                {
+                    "step_id": "F4",
+                    "action": "Execute UBO verification against global KYC registries.",
+                    "owner_role": "Forensic Investigator",
+                    "outputs": [
+                        "UBO verification memo"
+                    ],
+                    "evidence": [
+                        "Registry search outputs",
+                        "Corporate structure diagrams"
+                    ]
+                }
+            ]
+        },
+        {
+            "phase_id": "report",
+            "name": "Risk Quantification Report",
+            "steps": [
+                {
+                    "step_id": "R1",
+                    "action": "Assemble composite Arkashri risk score and human-interpretable explanation.",
+                    "owner_role": "Forensic Lead",
+                    "outputs": [
+                        "Composite risk scorecard"
+                    ],
+                    "evidence": [
+                        "Arkashri compute_risk() explanation JSON",
+                        "Deterministic rule hit log"
+                    ]
+                },
+                {
+                    "step_id": "R2",
+                    "action": "Prepare final forensic risk profiling report with regulatory referral recommendation.",
+                    "owner_role": "Forensic Lead",
+                    "outputs": [
+                        "Forensic risk profile report"
+                    ],
+                    "evidence": [
+                        "Legal review sign-off",
+                        "Risk committee approval"
+                    ]
+                }
+            ]
+        },
+        {
+            "phase_id": "close",
+            "name": "Case Disposition",
+            "steps": [
+                {
+                    "step_id": "C1",
+                    "action": "Seal engagement with WORM hash bundle for regulatory evidentiary use.",
+                    "owner_role": "Evidence Custodian",
+                    "outputs": [
+                        "WORM sealed audit file"
+                    ],
+                    "evidence": [
+                        "POST /engagements/{id}/seal response",
+                        "Hash chain anchor block"
+                    ]
+                }
+            ]
+        }
+    ],
+    "evidence_checklist": [
+        {
+            "id": "E1",
+            "description": "Population scope definition and extract",
+            "required": true,
+            "source_system": "Core Banking / ERP"
+        },
+        {
+            "id": "E2",
+            "description": "Benford's law analysis report",
+            "required": true,
+            "source_system": "Forensic Analytics Platform"
+        },
+        {
+            "id": "E3",
+            "description": "ML anomaly scoring output",
+            "required": true,
+            "source_system": "Arkashri ML Engine"
+        },
+        {
+            "id": "E4",
+            "description": "Offshore routing graph",
+            "required": true,
+            "source_system": "SWIFT Messaging"
+        },
+        {
+            "id": "E5",
+            "description": "UBO verification registry search",
+            "required": true,
+            "source_system": "Global KYC Registry"
+        },
+        {
+            "id": "E6",
+            "description": "WORM sealed audit bundle",
+            "required": true,
+            "source_system": "Arkashri Seal API"
+        }
+    ],
+    "test_scripts": [
+        {
+            "script_id": "T1",
+            "name": "Benford's Law Statistical Test",
+            "method": "Chi-Square Goodness-of-Fit",
+            "sample_rule": "All numeric ledger fields",
+            "steps": [
+                "Extract first-digit distribution from transaction amounts.",
+                "Compare against Benford expected distribution.",
+                "Compute chi-square statistic and flag if deviation > 0.15."
+            ],
+            "pass_condition": "benfords_law_deviation <= 0.15 for all material ledger populations."
+        },
+        {
+            "script_id": "T2",
+            "name": "Sanctions Screening Confirmation",
+            "method": "Automated OFAC/HMT/UN List Screen",
+            "sample_rule": "100% of entities in scope",
+            "steps": [
+                "Run each entity name and ID against Arkashri sanctions API.",
+                "Escalate all hits with probability > 0.70 to Forensic Lead.",
+                "Document false-positive disposition with evidence."
+            ],
+            "pass_condition": "Zero unresolved sanctions hits with probability > 0.70."
+        },
+        {
+            "script_id": "T3",
+            "name": "Transaction Velocity Burst Analysis",
+            "method": "Temporal Time-Series Anomaly Detection",
+            "sample_rule": "Rolling 30-day windows",
+            "steps": [
+                "Compute rolling 30-day transaction count per entity.",
+                "Flag entities with count spike > 3 standard deviations above historical mean.",
+                "Cross-reference burst periods with known external events."
+            ],
+            "pass_condition": "All velocity anomalies documented with commercial rationale or escalated."
+        }
+    ],
+    "report_sections": [
+        {
+            "id": "R1",
+            "title": "Population And Scope",
+            "required": true
+        },
+        {
+            "id": "R2",
+            "title": "Quantitative Risk Scores (Arkashri Composite)",
+            "required": true
+        },
+        {
+            "id": "R3",
+            "title": "Benford's Law Analysis",
+            "required": true
+        },
+        {
+            "id": "R4",
+            "title": "Offshore Routing And UBO Assessment",
+            "required": true
+        },
+        {
+            "id": "R5",
+            "title": "ML Signal Explanations (SHAP)",
+            "required": true
+        },
+        {
+            "id": "R6",
+            "title": "Regulatory Referral Recommendation",
+            "required": true
+        }
+    ],
+    "closure_gates": [
+        {
+            "id": "G1",
+            "criteria": "ForensicProfile ingested and compute_risk() executed.",
+            "evidence_required": [
+                "API response payload"
+            ]
+        },
+        {
+            "id": "G2",
+            "criteria": "All sanctions hits resolved.",
+            "evidence_required": [
+                "Sanctions disposition log"
+            ]
+        },
+        {
+            "id": "G3",
+            "criteria": "Benford deviation within acceptable threshold.",
+            "evidence_required": [
+                "Chi-square report"
+            ]
+        },
+        {
+            "id": "G4",
+            "criteria": "WORM seal complete.",
+            "evidence_required": [
+                "Seal bundle hash"
+            ]
+        }
+    ],
+    "kpis": [
+        {
+            "id": "K1",
+            "name": "Composite Forensic Risk Score",
+            "formula": "compute_risk() final_risk output",
+            "target": "< 50.0 for clearance"
+        },
+        {
+            "id": "K2",
+            "name": "Sanctions Hit Resolution Rate",
+            "formula": "ResolvedHits / TotalHits",
+            "target": "= 1.00"
+        },
+        {
+            "id": "K3",
+            "name": "Benford Deviation",
+            "formula": "benfords_law_deviation",
+            "target": "<= 0.15"
+        }
+    ]
+}

@@ -1,0 +1,163 @@
+{
+  "workflow_id": "payroll_audit_v1",
+  "audit_type": "payroll_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "internal_or_external",
+    "what": "payroll_accuracy_and_compliance",
+    "when": "periodical"
+  },
+  "objective": "Verify payroll completeness, accuracy, authorization, and statutory deduction compliance.",
+  "scope_fields": [
+    "payroll_period",
+    "employee_population",
+    "pay_components",
+    "deduction_rules",
+    "bank_disbursement_file",
+    "statutory_returns"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Payroll Scope Planning",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Define payroll populations and high-risk categories.",
+          "owner_role": "Payroll Audit Lead",
+          "outputs": ["Payroll risk map"],
+          "evidence": ["Employee master extract", "Risk criteria"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Map payroll process from HR inputs to bank payout.",
+          "owner_role": "Payroll Auditor",
+          "outputs": ["Process map"],
+          "evidence": ["SOP documents", "System workflow"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Computation And Payment Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Validate employee master integrity and detect ghost employees.",
+          "owner_role": "Payroll Auditor",
+          "outputs": ["Employee integrity test results"],
+          "evidence": ["HR master", "Attendance records"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Recompute gross-to-net payroll and verify statutory deductions/remittances.",
+          "owner_role": "Payroll Auditor",
+          "outputs": ["Recalculation variance report"],
+          "evidence": ["Payroll register", "Remittance proofs", "Tax filings"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Exception Reporting",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Classify payroll errors by financial and legal impact.",
+          "owner_role": "Payroll Audit Manager",
+          "outputs": ["Error impact register"],
+          "evidence": ["Variance analysis", "Exposure estimate"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Issue corrective actions for HR, payroll, and finance owners.",
+          "owner_role": "Payroll Audit Manager",
+          "outputs": ["Corrective action plan"],
+          "evidence": ["Owner sign-off"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Remediation Validation",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Retest corrected payroll cycles.",
+          "owner_role": "Payroll Auditor",
+          "outputs": ["Retest payroll results"],
+          "evidence": ["Subsequent cycle payroll pack"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Close audit and archive payroll evidence package.",
+          "owner_role": "Payroll PMO",
+          "outputs": ["Final closure memo"],
+          "evidence": ["Archived workpapers", "Hash entry"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "HR master and payroll master", "required": true, "source_system": "HRIS"},
+    {"id": "E2", "description": "Attendance and overtime records", "required": true, "source_system": "Time System"},
+    {"id": "E3", "description": "Payroll register and bank payout file", "required": true, "source_system": "Payroll System"},
+    {"id": "E4", "description": "Statutory deduction and remittance proof", "required": true, "source_system": "Tax/Compliance Portal"},
+    {"id": "E5", "description": "Final payroll audit report", "required": true, "source_system": "DMS"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Ghost Employee Detection",
+      "method": "Master Data Integrity",
+      "sample_rule": "100% active payroll employees",
+      "steps": [
+        "Match payroll employees with active HR records.",
+        "Identify duplicate bank accounts and IDs.",
+        "Validate anomalies with HR and managers."
+      ],
+      "pass_condition": "No unresolved ghost or duplicate payroll identity remains."
+    },
+    {
+      "script_id": "T2",
+      "name": "Gross-To-Net Recalculation",
+      "method": "Reperformance",
+      "sample_rule": "Risk-weighted employee sample",
+      "steps": [
+        "Recompute earnings, deductions, and net pay.",
+        "Compare recomputation to payroll output.",
+        "Document variance cause and materiality."
+      ],
+      "pass_condition": "Recalculation variance is below material threshold."
+    },
+    {
+      "script_id": "T3",
+      "name": "Payout Trace",
+      "method": "Bank Reconciliation",
+      "sample_rule": "100% high-value payouts + random sample",
+      "steps": [
+        "Trace payroll register net pay to bank file.",
+        "Confirm bank debit totals and return failures.",
+        "Validate failed payout reprocessing controls."
+      ],
+      "pass_condition": "Net pay trace is complete without unexplained differences."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Payroll Scope And Population", "required": true},
+    {"id": "R2", "title": "Computation Accuracy Findings", "required": true},
+    {"id": "R3", "title": "Deduction And Remittance Compliance", "required": true},
+    {"id": "R4", "title": "Exception Summary", "required": true},
+    {"id": "R5", "title": "Corrective Action Plan", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Payroll population completeness validated.", "evidence_required": ["Population reconciliation"]},
+    {"id": "G2", "criteria": "Recalculation and payout trace completed.", "evidence_required": ["Test workpapers"]},
+    {"id": "G3", "criteria": "Statutory remittance exceptions resolved or disclosed.", "evidence_required": ["Exception log"]},
+    {"id": "G4", "criteria": "Retest passed for corrected cycle.", "evidence_required": ["Retest evidence"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Payroll Accuracy", "formula": "CorrectPayslips / PayslipsTested", "target": ">= 0.99"},
+    {"id": "K2", "name": "On-Time Statutory Remittance", "formula": "OnTimeRemittances / TotalRemittances", "target": "= 1.00"}
+  ]
+}

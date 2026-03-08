@@ -1,0 +1,164 @@
+{
+  "workflow_id": "internal_audit_v1",
+  "audit_type": "internal_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "internal",
+    "what": "control_and_risk_management",
+    "when": "risk_based_periodical"
+  },
+  "objective": "Evaluate adequacy and effectiveness of internal controls, risk response, and governance execution.",
+  "scope_fields": [
+    "business_process",
+    "risk_universe_reference",
+    "control_library_version",
+    "policy_set_version",
+    "audit_period",
+    "process_owner",
+    "control_owner"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Risk-Based Planning",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Select audit area from approved annual plan and define objectives.",
+          "owner_role": "Head of Internal Audit",
+          "outputs": ["Approved engagement scope"],
+          "evidence": ["Annual plan reference", "Audit charter"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Perform process walkthrough and identify key controls and risks.",
+          "owner_role": "Internal Auditor",
+          "outputs": ["Risk-control matrix"],
+          "evidence": ["Walkthrough notes", "Flowcharts"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Control Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Test control design adequacy against policy requirements.",
+          "owner_role": "Internal Auditor",
+          "outputs": ["Design effectiveness results"],
+          "evidence": ["Policy mapping table", "Control narratives"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Test operating effectiveness using risk-weighted sample sets.",
+          "owner_role": "Internal Auditor",
+          "outputs": ["Operating effectiveness results", "Exception list"],
+          "evidence": ["Sample selections", "Transaction evidence"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Issue Evaluation And Reporting",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Perform root-cause analysis and severity grading for findings.",
+          "owner_role": "Audit Manager",
+          "outputs": ["Root cause memo", "Issue ratings"],
+          "evidence": ["Issue workshop records", "Control failure trail"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Agree remediation actions, owners, and due dates with management.",
+          "owner_role": "Audit Manager",
+          "outputs": ["Management action plan"],
+          "evidence": ["Management response sign-off"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Follow-Up Closure",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Issue final internal audit report to audit committee.",
+          "owner_role": "Head of Internal Audit",
+          "outputs": ["Final IA report"],
+          "evidence": ["Committee submission record"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Track remediation to closure and validate effectiveness.",
+          "owner_role": "Internal Audit PMO",
+          "outputs": ["Closed issue register"],
+          "evidence": ["Retest evidence", "Closure approvals"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Approved internal audit plan and charter", "required": true, "source_system": "GRC"},
+    {"id": "E2", "description": "Risk-control matrix", "required": true, "source_system": "GRC"},
+    {"id": "E3", "description": "Sample testing workpapers", "required": true, "source_system": "Audit Workpaper Tool"},
+    {"id": "E4", "description": "Management action plan", "required": true, "source_system": "Issue Tracker"},
+    {"id": "E5", "description": "Closure retest evidence", "required": true, "source_system": "Issue Tracker"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Approval Matrix Compliance",
+      "method": "Control Testing",
+      "sample_rule": "All high-risk approvals + random medium-risk sample",
+      "steps": [
+        "Pull transactions requiring hierarchical approvals.",
+        "Verify approver level against authority matrix.",
+        "Log breaches with responsible control owner."
+      ],
+      "pass_condition": "No unresolved high-risk approval breaches."
+    },
+    {
+      "script_id": "T2",
+      "name": "Segregation Of Duties",
+      "method": "Access and Activity Review",
+      "sample_rule": "100% of privileged roles",
+      "steps": [
+        "Extract user-role assignments and transaction logs.",
+        "Detect conflicting role combinations.",
+        "Verify compensating controls where conflicts exist."
+      ],
+      "pass_condition": "All critical SoD conflicts remediated or compensated."
+    },
+    {
+      "script_id": "T3",
+      "name": "Exception Escalation Timeliness",
+      "method": "Process Adherence",
+      "sample_rule": "All P1/P2 incidents in period",
+      "steps": [
+        "Compare incident creation and escalation timestamps.",
+        "Check SLA adherence and manager acknowledgement.",
+        "Document delays and causal factors."
+      ],
+      "pass_condition": "Escalation SLA compliance meets policy threshold."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Scope And Methodology", "required": true},
+    {"id": "R2", "title": "Control Effectiveness Summary", "required": true},
+    {"id": "R3", "title": "Findings By Severity", "required": true},
+    {"id": "R4", "title": "Root Cause Analysis", "required": true},
+    {"id": "R5", "title": "Management Action Plan", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Scope approved by Internal Audit Head.", "evidence_required": ["Scope approval"]},
+    {"id": "G2", "criteria": "All planned control tests executed.", "evidence_required": ["Test execution logs"]},
+    {"id": "G3", "criteria": "Management responses attached to all findings.", "evidence_required": ["Response register"]},
+    {"id": "G4", "criteria": "Remediation closure verified for due findings.", "evidence_required": ["Retest and closure notes"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Issue Closure SLA", "formula": "IssuesClosedWithinSLA / IssuesDue", "target": ">= 0.95"},
+    {"id": "K2", "name": "Repeat Finding Rate", "formula": "RepeatFindings / TotalFindings", "target": "<= 0.10"}
+  ]
+}

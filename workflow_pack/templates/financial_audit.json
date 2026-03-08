@@ -1,0 +1,167 @@
+{
+  "workflow_id": "financial_audit_v1",
+  "audit_type": "financial_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "external_or_internal",
+    "what": "financial_statements",
+    "when": "periodical"
+  },
+  "objective": "Provide reasonable assurance that financial statements are free from material misstatement and present a true and fair view.",
+  "scope_fields": [
+    "legal_entity",
+    "reporting_period",
+    "reporting_framework",
+    "materiality_threshold",
+    "trial_balance_source",
+    "general_ledger_source",
+    "bank_accounts_in_scope",
+    "major_disclosure_areas"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Planning",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Set materiality and define significant accounts and disclosures.",
+          "owner_role": "Audit Lead",
+          "outputs": ["Materiality memo", "Significant account list"],
+          "evidence": ["Signed planning memo", "Risk universe workbook"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Perform risk assessment including fraud risk discussion and analytics.",
+          "owner_role": "Audit Manager",
+          "outputs": ["Risk matrix", "Fraud risk assessment"],
+          "evidence": ["Risk workshop notes", "Analytical review snapshots"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Control And Substantive Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Test design and operating effectiveness of key financial reporting controls.",
+          "owner_role": "Senior Auditor",
+          "outputs": ["Control testing sheets", "Exceptions register"],
+          "evidence": ["Walkthrough records", "Sample test evidence"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Execute substantive procedures for balances, transactions, cut-off and disclosures.",
+          "owner_role": "Senior Auditor",
+          "outputs": ["Substantive test pack", "Confirmed balances"],
+          "evidence": ["Third-party confirmations", "Vouching samples", "Reconciliations"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Conclusion And Reporting",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Aggregate detected misstatements and evaluate against materiality.",
+          "owner_role": "Audit Manager",
+          "outputs": ["Misstatement summary", "Adjusted vs unadjusted analysis"],
+          "evidence": ["Misstatement tracker", "Management discussion log"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Form audit opinion and draft audit report including key matters.",
+          "owner_role": "Engagement Partner",
+          "outputs": ["Draft opinion", "Final report package"],
+          "evidence": ["Partner review notes", "Final signed report"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Closure",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Complete management representation and final quality review.",
+          "owner_role": "Engagement Partner",
+          "outputs": ["Representation letter", "Quality review clearance"],
+          "evidence": ["Signed MRL", "EQCR checklist"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Lock working papers and archive immutable evidence hashes.",
+          "owner_role": "Audit PMO",
+          "outputs": ["Archive manifest", "Evidence hash ledger"],
+          "evidence": ["Archive export log", "Hash chain event"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Signed engagement letter", "required": true, "source_system": "DMS"},
+    {"id": "E2", "description": "Final trial balance and ledger extract", "required": true, "source_system": "ERP"},
+    {"id": "E3", "description": "Bank and legal confirmations", "required": true, "source_system": "External Confirmation Portal"},
+    {"id": "E4", "description": "Control test and substantive test workpapers", "required": true, "source_system": "Audit Workpaper Tool"},
+    {"id": "E5", "description": "Management representation letter", "required": true, "source_system": "DMS"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Revenue Cut-Off",
+      "method": "Substantive",
+      "sample_rule": "Minimum 25 samples around period end",
+      "steps": [
+        "Select invoices 7 days before and after period-end.",
+        "Match dispatch/service proof and GL posting date.",
+        "Flag mismatches as cut-off exceptions."
+      ],
+      "pass_condition": "No material cut-off misstatement unresolved."
+    },
+    {
+      "script_id": "T2",
+      "name": "Bank Reconciliation Accuracy",
+      "method": "Control + Substantive",
+      "sample_rule": "All high-value bank accounts",
+      "steps": [
+        "Reperform month-end bank reconciliation.",
+        "Trace reconciling items to subsequent clearance.",
+        "Investigate stale items over policy threshold."
+      ],
+      "pass_condition": "Reconciliation differences are explained and non-material."
+    },
+    {
+      "script_id": "T3",
+      "name": "Disclosure Completeness",
+      "method": "Disclosure Checklist",
+      "sample_rule": "100% of mandatory note disclosures",
+      "steps": [
+        "Map financial statement notes to disclosure checklist.",
+        "Cross-reference note values to supporting ledgers.",
+        "Document missing or inconsistent disclosures."
+      ],
+      "pass_condition": "All required disclosures are complete and consistent."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Audit Scope And Basis", "required": true},
+    {"id": "R2", "title": "Management Responsibilities", "required": true},
+    {"id": "R3", "title": "Auditor Responsibilities", "required": true},
+    {"id": "R4", "title": "Audit Opinion", "required": true},
+    {"id": "R5", "title": "Key Audit Matters", "required": true},
+    {"id": "R6", "title": "Emphasis Or Other Matter", "required": false}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Materiality and risk assessment approved.", "evidence_required": ["Planning sign-off"]},
+    {"id": "G2", "criteria": "All planned tests executed and reviewed.", "evidence_required": ["Workpaper review notes"]},
+    {"id": "G3", "criteria": "Unadjusted misstatements below materiality threshold.", "evidence_required": ["Misstatement summary"]},
+    {"id": "G4", "criteria": "Final report signed and archived with hash.", "evidence_required": ["Signed report", "Archive hash"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Audit Cycle Time", "formula": "ReportDate - FieldworkStart", "target": "<= 7 days"},
+    {"id": "K2", "name": "Automation Rate", "formula": "AutomatedTests / TotalTests", "target": ">= 0.90"},
+    {"id": "K3", "name": "Coverage", "formula": "TransactionsTested / TransactionsInScope", "target": "= 1.00"}
+  ]
+}

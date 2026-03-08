@@ -1,0 +1,163 @@
+{
+  "workflow_id": "operational_audit_v1",
+  "audit_type": "operational_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "internal_or_external",
+    "what": "efficiency_effectiveness",
+    "when": "periodical"
+  },
+  "objective": "Assess process efficiency, control effectiveness, and resource utilization to improve operational performance.",
+  "scope_fields": [
+    "process_name",
+    "process_owner",
+    "kpi_catalog",
+    "baseline_metrics_period",
+    "in_scope_locations",
+    "systems_used"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Process Baseline",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Define target KPIs and expected service levels.",
+          "owner_role": "Operations Audit Lead",
+          "outputs": ["Target KPI matrix"],
+          "evidence": ["SLA documents", "Benchmark references"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Map current state workflow and key bottlenecks.",
+          "owner_role": "Operations Auditor",
+          "outputs": ["Current-state process map"],
+          "evidence": ["Process interviews", "Workflow diagrams"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Performance Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Measure throughput, cycle time, error rate, and rework.",
+          "owner_role": "Operations Auditor",
+          "outputs": ["Performance measurements"],
+          "evidence": ["System logs", "KPI extracts"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Test control points and exception handling behavior.",
+          "owner_role": "Operations Auditor",
+          "outputs": ["Control and exception test outcomes"],
+          "evidence": ["Exception records", "Control execution traces"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Optimization Recommendations",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Identify waste and quantify cost/time impact.",
+          "owner_role": "Audit Manager",
+          "outputs": ["Waste and impact analysis"],
+          "evidence": ["Baseline vs observed metric tables"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Propose improvement plan with milestones and owners.",
+          "owner_role": "Audit Manager",
+          "outputs": ["Improvement roadmap"],
+          "evidence": ["Owner acceptance notes"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Implementation Validation",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Track implementation and compare post-change metrics.",
+          "owner_role": "Operations PMO",
+          "outputs": ["Post-implementation KPI report"],
+          "evidence": ["KPI trend charts"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Close audit after confirmed performance gains.",
+          "owner_role": "Operations Audit Lead",
+          "outputs": ["Closure memo"],
+          "evidence": ["Signed closure approval", "Archived workpapers"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Current-state process map", "required": true, "source_system": "Process Repository"},
+    {"id": "E2", "description": "Baseline KPI dataset", "required": true, "source_system": "BI Warehouse"},
+    {"id": "E3", "description": "Control and exception logs", "required": true, "source_system": "ERP/Workflow Tool"},
+    {"id": "E4", "description": "Optimization impact model", "required": true, "source_system": "Audit Analysis Workbook"},
+    {"id": "E5", "description": "Post-implementation KPI validation", "required": true, "source_system": "BI Warehouse"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Cycle Time Variance",
+      "method": "KPI Analysis",
+      "sample_rule": "All transactions in selected period",
+      "steps": [
+        "Compute median and percentile cycle times.",
+        "Compare against SLA and benchmark values.",
+        "Segment delays by process step."
+      ],
+      "pass_condition": "Cycle time variance within approved limit."
+    },
+    {
+      "script_id": "T2",
+      "name": "Rework Ratio",
+      "method": "Exception Analytics",
+      "sample_rule": "All exceptions tagged for rework",
+      "steps": [
+        "Count transactions requiring rework.",
+        "Analyze root causes by category.",
+        "Validate whether corrective controls exist."
+      ],
+      "pass_condition": "Rework ratio shows declining trend or is below threshold."
+    },
+    {
+      "script_id": "T3",
+      "name": "Manual Touchpoint Density",
+      "method": "Process Mining",
+      "sample_rule": "Top 3 high-volume workflows",
+      "steps": [
+        "Identify manual intervention events.",
+        "Estimate handling effort and delay contribution.",
+        "Recommend automation candidates."
+      ],
+      "pass_condition": "Manual steps prioritized with approved action plan."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Process Scope And Baseline", "required": true},
+    {"id": "R2", "title": "Efficiency Findings", "required": true},
+    {"id": "R3", "title": "Control And Exception Findings", "required": true},
+    {"id": "R4", "title": "Optimization Recommendations", "required": true},
+    {"id": "R5", "title": "Expected Benefit And Timeline", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Baseline KPI and process map approved.", "evidence_required": ["Baseline pack"]},
+    {"id": "G2", "criteria": "Planned performance tests executed.", "evidence_required": ["Test logs"]},
+    {"id": "G3", "criteria": "Optimization plan accepted by owners.", "evidence_required": ["Signed roadmap"]},
+    {"id": "G4", "criteria": "Post-change KPI validation complete.", "evidence_required": ["Validation report"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Cycle Time Improvement", "formula": "(BaselineCycleTime - CurrentCycleTime) / BaselineCycleTime", "target": ">= 0.20"},
+    {"id": "K2", "name": "Exception Rate", "formula": "Exceptions / TotalTransactions", "target": "<= 0.03"}
+  ]
+}

@@ -1,0 +1,163 @@
+{
+  "workflow_id": "statutory_audit_v1",
+  "audit_type": "statutory_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "external_statutory_auditor",
+    "what": "legal_financial_compliance",
+    "when": "mandatory_periodical"
+  },
+  "objective": "Fulfil legally mandated audit obligations under applicable company and sector laws with prescribed reporting format.",
+  "scope_fields": [
+    "legal_jurisdiction",
+    "entity_type",
+    "statute_reference",
+    "reporting_period",
+    "mandatory_annexures",
+    "filing_deadline"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Legal Applicability Planning",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Confirm statutory applicability and auditor appointment validity.",
+          "owner_role": "Audit Partner",
+          "outputs": ["Applicability memo", "Appointment validity check"],
+          "evidence": ["Board/AGM appointment record", "Applicable law checklist"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Map statutory clauses to test procedures and reporting sections.",
+          "owner_role": "Audit Manager",
+          "outputs": ["Clause-to-test mapping"],
+          "evidence": ["Compliance mapping workbook"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Statute-Specific Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Verify statutory books, registers, and mandated disclosures.",
+          "owner_role": "Statutory Audit Team",
+          "outputs": ["Register verification log"],
+          "evidence": ["Statutory register copies", "Disclosure checklist"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Test legal compliance assertions and supporting transactions.",
+          "owner_role": "Statutory Audit Team",
+          "outputs": ["Compliance test results"],
+          "evidence": ["Sample tests", "Exception details"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Prescribed Format Reporting",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Draft report in jurisdiction-prescribed format including annexures.",
+          "owner_role": "Audit Manager",
+          "outputs": ["Draft statutory report"],
+          "evidence": ["Format compliance checklist"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Finalize and sign statutory report for filing.",
+          "owner_role": "Audit Partner",
+          "outputs": ["Signed statutory report"],
+          "evidence": ["Partner sign-off", "Final report version hash"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Filing And Retention",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Submit report to required authorities/stakeholders before deadline.",
+          "owner_role": "Compliance Officer",
+          "outputs": ["Filing acknowledgement"],
+          "evidence": ["Submission receipt"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Archive statutory working papers per legal retention rules.",
+          "owner_role": "Records Custodian",
+          "outputs": ["Retention archive package"],
+          "evidence": ["Retention manifest", "Immutable archive reference"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Auditor appointment documents", "required": true, "source_system": "Company Secretariat DMS"},
+    {"id": "E2", "description": "Statutory register extracts", "required": true, "source_system": "Secretarial System"},
+    {"id": "E3", "description": "Clause-wise compliance checklist", "required": true, "source_system": "GRC"},
+    {"id": "E4", "description": "Prescribed-format report draft and final", "required": true, "source_system": "DMS"},
+    {"id": "E5", "description": "Filing receipt", "required": true, "source_system": "Regulatory Filing Portal"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Statutory Register Completeness",
+      "method": "Document Verification",
+      "sample_rule": "100% of mandatory registers",
+      "steps": [
+        "List legally required registers for entity type.",
+        "Verify each register exists and is updated for period.",
+        "Document missing entries and escalation impact."
+      ],
+      "pass_condition": "No critical statutory register deficiency remains unresolved."
+    },
+    {
+      "script_id": "T2",
+      "name": "Clause Compliance Testing",
+      "method": "Requirement-to-Test Trace",
+      "sample_rule": "All high-risk legal clauses",
+      "steps": [
+        "Map statutory clause to control or transaction evidence.",
+        "Sample test transactions against clause requirement.",
+        "Record non-compliance and reporting obligation."
+      ],
+      "pass_condition": "All material clause breaches disclosed in report."
+    },
+    {
+      "script_id": "T3",
+      "name": "Report Format Compliance",
+      "method": "Checklist",
+      "sample_rule": "100% prescribed sections",
+      "steps": [
+        "Run prescribed format checklist on draft report.",
+        "Verify annexure/paragraph ordering and content.",
+        "Confirm signatures and identifiers are complete."
+      ],
+      "pass_condition": "Report passes format checklist without mandatory gaps."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Statutory Audit Opinion", "required": true},
+    {"id": "R2", "title": "Legal Clause Observations", "required": true},
+    {"id": "R3", "title": "Mandatory Annexure", "required": true},
+    {"id": "R4", "title": "Non-Compliance Disclosures", "required": true},
+    {"id": "R5", "title": "Filing Declarations", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Applicability and appointment validated.", "evidence_required": ["Applicability memo"]},
+    {"id": "G2", "criteria": "Mandatory clause tests completed.", "evidence_required": ["Clause test logs"]},
+    {"id": "G3", "criteria": "Prescribed report format validated.", "evidence_required": ["Format checklist"]},
+    {"id": "G4", "criteria": "Filing completed before deadline.", "evidence_required": ["Filing acknowledgement"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "On-Time Filing Rate", "formula": "ReportsFiledOnTime / TotalReports", "target": "= 1.00"},
+    {"id": "K2", "name": "Clause Coverage", "formula": "ClausesTested / ClausesApplicable", "target": "= 1.00"}
+  ]
+}

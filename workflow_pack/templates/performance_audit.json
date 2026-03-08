@@ -1,0 +1,163 @@
+{
+  "workflow_id": "performance_audit_v1",
+  "audit_type": "performance_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "internal_or_public_sector_auditor",
+    "what": "economy_efficiency_effectiveness",
+    "when": "program_cycle_based"
+  },
+  "objective": "Assess whether a program delivered value for money across economy, efficiency, and effectiveness outcomes.",
+  "scope_fields": [
+    "program_name",
+    "program_owner",
+    "program_budget",
+    "target_outcomes",
+    "geographic_scope",
+    "evaluation_period"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Evaluation Design",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Define audit questions and performance criteria.",
+          "owner_role": "Performance Audit Lead",
+          "outputs": ["Audit question set", "Criteria framework"],
+          "evidence": ["Program design documents", "Policy objectives"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Design data collection and sampling methodology.",
+          "owner_role": "Performance Auditor",
+          "outputs": ["Methodology note"],
+          "evidence": ["Sampling plan", "Data source inventory"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Outcome Verification",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Collect and validate program output and outcome data.",
+          "owner_role": "Performance Auditor",
+          "outputs": ["Validated dataset"],
+          "evidence": ["Field records", "Survey datasets", "System exports"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Compare achieved outcomes against planned targets and spend.",
+          "owner_role": "Performance Analyst",
+          "outputs": ["Gap analysis"],
+          "evidence": ["Budget utilization reports", "Outcome dashboards"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Value For Money Assessment",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Assess economy, efficiency, and effectiveness scores.",
+          "owner_role": "Performance Audit Manager",
+          "outputs": ["3E scorecard"],
+          "evidence": ["Scoring model workbook"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Draft recommendations with measurable improvement indicators.",
+          "owner_role": "Performance Audit Manager",
+          "outputs": ["Recommendation matrix"],
+          "evidence": ["Consultation minutes", "Implementation feasibility notes"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Implementation Tracking",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Agree implementation plan and monitoring cadence.",
+          "owner_role": "Program Owner",
+          "outputs": ["Implementation tracker"],
+          "evidence": ["Signed commitment sheet"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Archive audit package and baseline for future cycle comparison.",
+          "owner_role": "Audit PMO",
+          "outputs": ["Archived performance baseline"],
+          "evidence": ["Archive hash record"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Program objectives and budget approval", "required": true, "source_system": "Program PMO"},
+    {"id": "E2", "description": "Outcome KPI definitions", "required": true, "source_system": "Program PMO"},
+    {"id": "E3", "description": "Validated field/survey data", "required": true, "source_system": "Survey Platform"},
+    {"id": "E4", "description": "Budget and expenditure data", "required": true, "source_system": "Finance ERP"},
+    {"id": "E5", "description": "Final value-for-money report", "required": true, "source_system": "DMS"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Outcome Attainment Test",
+      "method": "Target vs Actual",
+      "sample_rule": "All primary outcome indicators",
+      "steps": [
+        "Load planned outcomes and actual measurements.",
+        "Compute variance by indicator and geography.",
+        "Validate outliers with source records."
+      ],
+      "pass_condition": "Outcome variances are fully explained with evidence."
+    },
+    {
+      "script_id": "T2",
+      "name": "Cost Efficiency Test",
+      "method": "Unit Cost Analysis",
+      "sample_rule": "Top cost centers in program",
+      "steps": [
+        "Calculate unit cost per delivered output.",
+        "Benchmark against prior period or peer baseline.",
+        "Flag material inefficiency pockets."
+      ],
+      "pass_condition": "Efficiency gaps quantified with actionable levers."
+    },
+    {
+      "script_id": "T3",
+      "name": "Economy Procurement Test",
+      "method": "Procurement Review",
+      "sample_rule": "High-value procurement events",
+      "steps": [
+        "Verify procurement method and competition level.",
+        "Compare procured rates with market references.",
+        "Document avoidable premium spend."
+      ],
+      "pass_condition": "No unexplained premium spend above threshold."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Program Context", "required": true},
+    {"id": "R2", "title": "Methodology And Data Quality", "required": true},
+    {"id": "R3", "title": "Economy Efficiency Effectiveness Assessment", "required": true},
+    {"id": "R4", "title": "Findings And Root Causes", "required": true},
+    {"id": "R5", "title": "Recommendations And Targets", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Audit criteria approved.", "evidence_required": ["Criteria framework"]},
+    {"id": "G2", "criteria": "Outcome and cost tests completed.", "evidence_required": ["Test workpapers"]},
+    {"id": "G3", "criteria": "Recommendations accepted by program owner.", "evidence_required": ["Management response"]},
+    {"id": "G4", "criteria": "Baseline and report archived.", "evidence_required": ["Archive manifest"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Outcome Achievement", "formula": "OutcomesMet / OutcomesPlanned", "target": ">= 0.85"},
+    {"id": "K2", "name": "Unit Cost Reduction", "formula": "(BaselineUnitCost - CurrentUnitCost) / BaselineUnitCost", "target": ">= 0.10"}
+  ]
+}

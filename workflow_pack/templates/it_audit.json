@@ -1,0 +1,163 @@
+{
+  "workflow_id": "it_audit_v1",
+  "audit_type": "it_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "internal_or_external",
+    "what": "information_security_and_it_controls",
+    "when": "continuous_or_periodical"
+  },
+  "objective": "Assess confidentiality, integrity, and availability controls across critical technology systems.",
+  "scope_fields": [
+    "critical_systems",
+    "hosting_environment",
+    "identity_provider",
+    "change_management_tool",
+    "backup_and_dr_system",
+    "audit_period"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "IT Risk Scoping",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Identify critical systems and data flows in scope.",
+          "owner_role": "IT Audit Lead",
+          "outputs": ["System inventory in scope"],
+          "evidence": ["Architecture diagrams", "Asset inventory"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Map ITGC and cybersecurity controls for testing.",
+          "owner_role": "IT Auditor",
+          "outputs": ["IT control matrix"],
+          "evidence": ["Policy mapping", "Control ownership list"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Control Validation",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Test access controls, privileged access, and SoD in systems.",
+          "owner_role": "IT Auditor",
+          "outputs": ["Access control findings"],
+          "evidence": ["Access export", "Privileged activity logs"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Test change management, patching, vulnerability, and backup controls.",
+          "owner_role": "IT Auditor",
+          "outputs": ["ITGC test results"],
+          "evidence": ["Change tickets", "Patch reports", "Backup restore logs"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Risk Reporting",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Rate findings by exploitability and business impact.",
+          "owner_role": "IT Audit Manager",
+          "outputs": ["Risk-rated issue register"],
+          "evidence": ["Threat context notes"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Issue remediation plan with target dates and owners.",
+          "owner_role": "IT Audit Manager",
+          "outputs": ["Remediation action plan"],
+          "evidence": ["Owner commitments", "Management responses"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Retest And Closure",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Retest remediated controls and verify closure evidence.",
+          "owner_role": "IT Auditor",
+          "outputs": ["Retest completion report"],
+          "evidence": ["Updated configs", "New scan results"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Archive IT audit artifacts and finalize governance reporting.",
+          "owner_role": "IT Audit PMO",
+          "outputs": ["Final IT audit package"],
+          "evidence": ["Governance submission", "Hash archive"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "System inventory and architecture", "required": true, "source_system": "CMDB"},
+    {"id": "E2", "description": "Access and privileged activity logs", "required": true, "source_system": "IAM/SIEM"},
+    {"id": "E3", "description": "Change and release tickets", "required": true, "source_system": "ITSM"},
+    {"id": "E4", "description": "Vulnerability and patch reports", "required": true, "source_system": "Security Scanner"},
+    {"id": "E5", "description": "Backup restore test evidence", "required": true, "source_system": "Backup Platform"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Privileged Access Review",
+      "method": "Access Testing",
+      "sample_rule": "100% privileged accounts",
+      "steps": [
+        "Extract all privileged accounts.",
+        "Validate business justification and approval.",
+        "Check last review date and revoke stale access."
+      ],
+      "pass_condition": "No unauthorized privileged account remains active."
+    },
+    {
+      "script_id": "T2",
+      "name": "Emergency Change Compliance",
+      "method": "Change Management Test",
+      "sample_rule": "All emergency changes in period",
+      "steps": [
+        "Pull emergency change tickets.",
+        "Verify retroactive approvals and testing evidence.",
+        "Record violations by system and owner."
+      ],
+      "pass_condition": "Emergency changes satisfy post-implementation control policy."
+    },
+    {
+      "script_id": "T3",
+      "name": "Backup Restore Validation",
+      "method": "DR/BCP Test",
+      "sample_rule": "Critical systems only",
+      "steps": [
+        "Run restore drill for critical datasets.",
+        "Measure RTO and RPO achieved.",
+        "Compare results to approved DR targets."
+      ],
+      "pass_condition": "Restore objectives meet approved thresholds."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "IT Scope And Systems", "required": true},
+    {"id": "R2", "title": "ITGC Results", "required": true},
+    {"id": "R3", "title": "Cybersecurity Findings", "required": true},
+    {"id": "R4", "title": "DR/Backup Readiness", "required": true},
+    {"id": "R5", "title": "Remediation Roadmap", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "All critical systems covered.", "evidence_required": ["Scope inventory"]},
+    {"id": "G2", "criteria": "All mandatory ITGC tests executed.", "evidence_required": ["Test logs"]},
+    {"id": "G3", "criteria": "Critical vulnerabilities have accepted treatment plans.", "evidence_required": ["Risk treatment records"]},
+    {"id": "G4", "criteria": "Retest completed for closed findings.", "evidence_required": ["Retest report"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Critical Finding Closure", "formula": "CriticalFindingsClosed / CriticalFindingsOpened", "target": ">= 0.95"},
+    {"id": "K2", "name": "Access Recertification Coverage", "formula": "AccountsRecertified / AccountsInScope", "target": "= 1.00"}
+  ]
+}

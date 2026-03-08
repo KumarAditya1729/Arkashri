@@ -1,0 +1,163 @@
+{
+  "workflow_id": "quality_audit_v1",
+  "audit_type": "quality_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "internal_or_certification_auditor",
+    "what": "quality_management_system_and_product_quality",
+    "when": "periodical"
+  },
+  "objective": "Assess compliance with quality standards and verify product or service conformance.",
+  "scope_fields": [
+    "quality_standard",
+    "in_scope_lines_or_services",
+    "sop_library_version",
+    "defect_criteria",
+    "calibration_assets",
+    "audit_period"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "QMS Planning",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Define audit criteria from standard clauses and SOPs.",
+          "owner_role": "Quality Audit Lead",
+          "outputs": ["Clause mapping matrix"],
+          "evidence": ["Standard document", "SOP references"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Select process, shift, and sample coverage plan.",
+          "owner_role": "Quality Auditor",
+          "outputs": ["Sampling plan"],
+          "evidence": ["Production/service schedule"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Process And Product Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Observe process execution against SOP compliance requirements.",
+          "owner_role": "Quality Auditor",
+          "outputs": ["Process compliance observations"],
+          "evidence": ["Observation notes", "Operator interviews"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Sample outputs and verify conformance to quality specifications.",
+          "owner_role": "Quality Auditor",
+          "outputs": ["Sample conformance results"],
+          "evidence": ["Test bench records", "Defect logs"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Nonconformity Reporting",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Classify nonconformities and determine root causes.",
+          "owner_role": "Quality Manager",
+          "outputs": ["Nonconformity register"],
+          "evidence": ["Root cause worksheet"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Issue CAPA with owner, due date, and verification method.",
+          "owner_role": "Quality Manager",
+          "outputs": ["CAPA plan"],
+          "evidence": ["CAPA approvals"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "CAPA Effectiveness Closure",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Verify CAPA implementation and effectiveness.",
+          "owner_role": "Quality Auditor",
+          "outputs": ["CAPA effectiveness report"],
+          "evidence": ["Retest records", "Reduced defect trend"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Close audit and archive quality evidence pack.",
+          "owner_role": "Quality PMO",
+          "outputs": ["Final closure package"],
+          "evidence": ["Archive hash", "Signed closure note"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Quality manual and SOPs", "required": true, "source_system": "QMS Repository"},
+    {"id": "E2", "description": "Training and competency records", "required": true, "source_system": "LMS"},
+    {"id": "E3", "description": "Product/service test records", "required": true, "source_system": "QMS Tool"},
+    {"id": "E4", "description": "Calibration and maintenance records", "required": true, "source_system": "Asset System"},
+    {"id": "E5", "description": "CAPA closure evidence", "required": true, "source_system": "QMS Tool"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "SOP Compliance Observation",
+      "method": "Direct Observation",
+      "sample_rule": "Multi-shift sample",
+      "steps": [
+        "Observe process execution at selected stations.",
+        "Compare observed steps with SOP requirements.",
+        "Record deviations with objective evidence."
+      ],
+      "pass_condition": "Critical SOP deviations are absent or immediately corrected."
+    },
+    {
+      "script_id": "T2",
+      "name": "Defect Rate Verification",
+      "method": "Sampling",
+      "sample_rule": "Random sample across batches",
+      "steps": [
+        "Test sampled outputs against quality specs.",
+        "Calculate defect rate by category.",
+        "Validate rework/reject records."
+      ],
+      "pass_condition": "Defect rate remains within approved quality limit."
+    },
+    {
+      "script_id": "T3",
+      "name": "Calibration Validity",
+      "method": "Record Verification",
+      "sample_rule": "100% critical measuring devices",
+      "steps": [
+        "Check calibration due date and certificate status.",
+        "Verify out-of-calibration handling actions.",
+        "Confirm traceability to national/international standards."
+      ],
+      "pass_condition": "No critical test performed with invalid-calibration equipment."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "QMS Scope And Criteria", "required": true},
+    {"id": "R2", "title": "Process Compliance Findings", "required": true},
+    {"id": "R3", "title": "Defect And Conformance Analysis", "required": true},
+    {"id": "R4", "title": "Nonconformities And CAPA", "required": true},
+    {"id": "R5", "title": "Effectiveness Verification", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Clause mapping and sampling approved.", "evidence_required": ["Audit plan"]},
+    {"id": "G2", "criteria": "Process and sample tests complete.", "evidence_required": ["Test logs"]},
+    {"id": "G3", "criteria": "CAPA assigned for all major findings.", "evidence_required": ["CAPA register"]},
+    {"id": "G4", "criteria": "CAPA effectiveness verified.", "evidence_required": ["Effectiveness report"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Defect Rate", "formula": "DefectiveUnits / UnitsTested", "target": "<= 0.02"},
+    {"id": "K2", "name": "CAPA Effectiveness", "formula": "EffectiveCAPA / CAPAClosed", "target": ">= 0.95"}
+  ]
+}

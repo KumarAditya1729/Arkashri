@@ -1,0 +1,163 @@
+{
+  "workflow_id": "forensic_audit_v1",
+  "audit_type": "forensic_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "specialized_forensic_team",
+    "what": "fraud_or_illegal_activity_investigation",
+    "when": "event_triggered"
+  },
+  "objective": "Investigate alleged misconduct, preserve evidentiary integrity, and produce legally defensible findings.",
+  "scope_fields": [
+    "allegation_reference",
+    "suspected_period",
+    "suspected_entities",
+    "evidence_sources",
+    "legal_counsel_contact",
+    "chain_of_custody_protocol"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Case Initiation",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Define case predication, objectives, and legal authority.",
+          "owner_role": "Forensic Lead",
+          "outputs": ["Case initiation memo"],
+          "evidence": ["Allegation intake record", "Legal mandate"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Apply legal hold and evidence preservation strategy.",
+          "owner_role": "Forensic Lead",
+          "outputs": ["Legal hold notice", "Preservation plan"],
+          "evidence": ["Hold acknowledgements", "Preservation checklist"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Evidence Collection And Analysis",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Collect digital and documentary evidence with chain-of-custody records.",
+          "owner_role": "Forensic Examiner",
+          "outputs": ["Evidence inventory", "Chain-of-custody log"],
+          "evidence": ["Forensic images", "Acquisition hashes"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Perform transaction analytics, link analysis, and anomaly deep-dives.",
+          "owner_role": "Forensic Analyst",
+          "outputs": ["Analytical findings", "Fund-flow maps"],
+          "evidence": ["Query outputs", "Link diagrams", "Supporting records"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Findings And Legal Narrative",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Conduct structured interviews and corroborate testimonial evidence.",
+          "owner_role": "Forensic Investigator",
+          "outputs": ["Interview summaries"],
+          "evidence": ["Interview transcripts", "Corroboration matrix"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Prepare legally defensible report with quantified impact.",
+          "owner_role": "Forensic Lead",
+          "outputs": ["Forensic report", "Loss quantification annexure"],
+          "evidence": ["Legal review notes", "Final signed report"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Case Handover",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Transfer report and evidence bundle to legal/authority.",
+          "owner_role": "Forensic Lead",
+          "outputs": ["Handover package"],
+          "evidence": ["Receipt acknowledgement"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Seal case archive with immutable hash and retention controls.",
+          "owner_role": "Evidence Custodian",
+          "outputs": ["Sealed archive manifest"],
+          "evidence": ["Storage seal log", "Hash chain anchor"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Case predication and legal authority", "required": true, "source_system": "Case Management"},
+    {"id": "E2", "description": "Legal hold records", "required": true, "source_system": "Legal DMS"},
+    {"id": "E3", "description": "Chain-of-custody logs", "required": true, "source_system": "Forensic Vault"},
+    {"id": "E4", "description": "Analytical evidence outputs", "required": true, "source_system": "Forensic Analytics Platform"},
+    {"id": "E5", "description": "Final forensic report", "required": true, "source_system": "Legal DMS"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Chain Of Custody Integrity",
+      "method": "Forensic Integrity Check",
+      "sample_rule": "100% evidence items",
+      "steps": [
+        "Verify each evidence transfer record has signer and timestamp.",
+        "Recompute evidence hashes at each custody point.",
+        "Flag any mismatch as critical integrity break."
+      ],
+      "pass_condition": "No chain-of-custody integrity break exists."
+    },
+    {
+      "script_id": "T2",
+      "name": "Anomalous Payment Pattern Detection",
+      "method": "Data Mining",
+      "sample_rule": "All high-risk ledgers",
+      "steps": [
+        "Run pattern rules for round-sum, split payment, and ghost vendor indicators.",
+        "Correlate anomalies with user access and approval trails.",
+        "Create investigative leads with evidentiary references."
+      ],
+      "pass_condition": "All high-confidence anomalies triaged with documented outcome."
+    },
+    {
+      "script_id": "T3",
+      "name": "Interview Corroboration",
+      "method": "Narrative Corroboration",
+      "sample_rule": "All material witness statements",
+      "steps": [
+        "Map each key statement to documentary or digital evidence.",
+        "Identify contradictions and unresolved gaps.",
+        "Document confidence level per allegation."
+      ],
+      "pass_condition": "Material conclusions are corroborated by independent evidence."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Case Background And Mandate", "required": true},
+    {"id": "R2", "title": "Evidence Collection Method", "required": true},
+    {"id": "R3", "title": "Findings And Timeline", "required": true},
+    {"id": "R4", "title": "Loss Quantification", "required": true},
+    {"id": "R5", "title": "Legal Evidentiary Annexures", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Legal hold and scope approved.", "evidence_required": ["Case initiation memo", "Hold notice"]},
+    {"id": "G2", "criteria": "Chain-of-custody complete for all evidence.", "evidence_required": ["Custody logs"]},
+    {"id": "G3", "criteria": "Findings legally reviewed.", "evidence_required": ["Legal review note"]},
+    {"id": "G4", "criteria": "Case handover receipt obtained.", "evidence_required": ["Handover acknowledgement"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Evidence Integrity Rate", "formula": "ValidEvidenceItems / TotalEvidenceItems", "target": "= 1.00"},
+    {"id": "K2", "name": "Case Resolution Time", "formula": "ClosureDate - CaseOpenDate", "target": "<= 30 days"}
+  ]
+}
