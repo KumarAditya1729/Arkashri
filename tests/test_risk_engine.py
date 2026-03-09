@@ -28,13 +28,15 @@ async def test_compute_risk_caching_layer(mock_redis, mock_session):
                 {"signal_type": "ML", "signal_key": "model_1", "weight": 0.2}
             ]
         },
-        [
-            {
-                "rule_key": "rule_1", "version": 1, "name": "Test Rule",
-                "expression": {"field": "status", "op": "eq", "value": "active"},
-                "signal_value": 0.5, "severity_floor": 0.1, "is_active": True
-            }
-        ]
+        {
+            "rules": [
+                {
+                    "rule_key": "rule_1", "version": 1, "name": "Test Rule",
+                    "expression": {"field": "status", "op": "eq", "value": "active"},
+                    "signal_value": 0.5, "severity_floor": 0.1, "is_active": True
+                }
+            ]
+        }
     ]
 
     result = await compute_risk(

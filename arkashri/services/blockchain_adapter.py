@@ -5,6 +5,8 @@ from typing import Protocol
 
 from arkashri.config import get_settings
 from arkashri.services.canonical import hash_object
+import structlog
+from circuitbreaker import circuit, CircuitBreakerError
 
 
 @dataclass
@@ -30,6 +32,8 @@ class BlockchainAdapter(Protocol):
         window_end_event_id: int,
         chain_anchor_id: int,
     ) -> AttestationResult: ...
+
+    async def check_health(self) -> bool: ...
 
 
 class SimulatedBlockchainAdapter:
@@ -68,6 +72,9 @@ class SimulatedBlockchainAdapter:
             },
         )
 
+    async def check_health(self) -> bool:
+        return True
+
 
 class HashNotaryAdapter:
     adapter_key = "HASH_NOTARY"
@@ -105,6 +112,9 @@ class HashNotaryAdapter:
             },
         )
 
+    async def check_health(self) -> bool:
+        return True
+
 
 class PolkadotAdapter:
     adapter_key = "POLKADOT"
@@ -140,15 +150,19 @@ class PolkadotAdapter:
 
         settings = get_settings()
         if settings.polkadot_enabled:
-            tx_reference, provider_payload = _submit_polkadot_anchor(
-                attestation_hash=attestation_hash,
-                merkle_root=merkle_root,
-                tenant_id=tenant_id,
-                jurisdiction=jurisdiction,
-                window_start_event_id=window_start_event_id,
-                window_end_event_id=window_end_event_id,
-                chain_anchor_id=chain_anchor_id,
-            )
+            try:
+                tx_reference, provider_payload = _submit_polkadot_anchor(
+                    attestation_hash=attestation_hash,
+                    merkle_root=merkle_root,
+                    tenant_id=tenant_id,
+                    jurisdiction=jurisdiction,
+                    window_start_event_id=window_start_event_id,
+                    window_end_event_id=window_end_event_id,
+                    chain_anchor_id=chain_anchor_id,
+                )
+            except CircuitBreakerError:
+                provider_payload["mode"] = "polkadot_circuit_broken"
+                provider_payload["remark"] = "The Polkadot relay connection is temporarily broken. The hash was not physically anchored."
 
         return AttestationResult(
             adapter_key=self.adapter_key,
@@ -157,6 +171,17 @@ class PolkadotAdapter:
             attestation_hash=attestation_hash,
             provider_payload=provider_payload,
         )
+
+    async def check_health(self) -> bool:
+        settings = get_settings()
+        if not settings.polkadot_enabled:
+            return True
+        try:
+            from substrateinterface import SubstrateInterface
+            substrate = SubstrateInterface(url=settings.polkadot_ws_url)
+            return substrate.is_connected
+        except Exception:
+            return False
 
 
 ADAPTERS: dict[str, BlockchainAdapter] = {
@@ -196,6 +221,7 @@ def run_adapter_anchor(
     )
 
 
+@circuit(failure_threshold=3, recovery_timeout=60)
 def _submit_polkadot_anchor(
     *,
     attestation_hash: str,

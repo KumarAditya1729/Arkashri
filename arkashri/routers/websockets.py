@@ -1,5 +1,7 @@
 import structlog
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from arkashri.dependencies import require_api_client
+from arkashri.utils.error_handling import handle_errors
 
 logger = structlog.get_logger("api.websockets")
 
@@ -34,19 +36,54 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+@router.websocket("/ws/test")
+async def test_websocket(websocket: WebSocket):
+    """
+    Simple test WebSocket endpoint
+    """
+    await websocket.accept()
+    await websocket.send_text("WebSocket connection successful!")
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await websocket.send_text(f"Echo: {data}")
+    except WebSocketDisconnect:
+        logger.info("Test WebSocket disconnected")
+
 @router.websocket("/ws/audit/{tenant_id}/{jurisdiction}")
-async def audit_stream(websocket: WebSocket, tenant_id: str, jurisdiction: str):
+async def audit_stream(
+    websocket: WebSocket, 
+    tenant_id: str, 
+    jurisdiction: str,
+    api_key: str = Query(default=None, alias="X-Arkashri-Key")
+):
     """
     Establish a persistent real-time connection to stream audit progress 
     events to multiple frontend client dashboards simultaneously.
     """
-    channel = f"audit:{tenant_id}:{jurisdiction}"
-    await manager.connect(channel, websocket)
     try:
-        while True:
-            # The client doesn't need to send us data, it just listens.
-            # However, we must continuously receive to keep the socket alive
-            # and catch client disconnections.
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(channel, websocket)
+        # Accept the WebSocket connection first
+        await websocket.accept()
+        
+        # For now, allow connections without strict authentication
+        # In production, you might want to validate the api_key here
+        if api_key:
+            logger.info("websocket_auth_attempt", tenant_id=tenant_id, api_key_provided=True)
+        else:
+            logger.info("websocket_auth_attempt", tenant_id=tenant_id, api_key_provided=False)
+        
+        channel = f"audit:{tenant_id}:{jurisdiction}"
+        await manager.connect(channel, websocket)
+        
+        try:
+            while True:
+                # The client doesn't need to send us data, it just listens.
+                # However, we must continuously receive to keep the socket alive
+                # and catch client disconnections.
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            manager.disconnect(channel, websocket)
+            
+    except Exception as e:
+        logger.error("websocket_connection_error", error=str(e), tenant_id=tenant_id)
+        await websocket.close(code=4000, reason=f"Connection error: {str(e)}")

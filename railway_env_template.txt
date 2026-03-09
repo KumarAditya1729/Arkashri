@@ -1,0 +1,57 @@
+# Arkashri Backend - Railway Environment Variables
+# Copy these to your Railway project settings
+
+# === DATABASE ===
+DATABASE_URL=postgresql://user:password@host:port/database
+# (Railway provides this automatically when you add PostgreSQL)
+
+# === REDIS ===
+REDIS_URL=redis://user:password@host:port
+# (Railway provides this automatically when you add Redis)
+
+# === AUTHENTICATION ===
+JWT_SECRET_KEY=your-jwt-secret-key-here
+SESSION_SECRET_KEY=your-session-secret-key-here
+JWT_ALGORITHM=HS256
+JWT_EXPIRY_MINUTES=60
+
+# === AI/LLM ===
+OPENAI_API_KEY=sk-your-openai-api-key-here
+AI_MODEL_PRIMARY=gpt-4-turbo
+AI_MODEL_FALLBACK=gpt-4o
+AI_CONFIDENCE_THRESHOLD=0.85
+
+# === AWS S3 STORAGE ===
+AWS_ACCESS_KEY_ID=your-aws-access-key
+AWS_SECRET_ACCESS_KEY=your-aws-secret-key
+AWS_REGION=ap-south-1
+S3_WORM_BUCKET=arkashri-production-worm-archive
+
+# === BLOCKCHAIN ===
+POLKADOT_WS_URL=wss://rpc.polkadot.io
+ETHEREUM_RPC_URL=https://eth-mainnet.alchemyapi.io/v2/demo
+POLYGON_RPC_URL=https://polygon-mainnet.alchemyapi.io/v2/demo
+ENABLE_MULTI_CHAIN_BLOCKCHAIN=true
+
+# === MONITORING ===
+SENTRY_DSN=your-sentry-dsn-here
+ENABLE_PERFORMANCE_MONITORING=true
+
+# === FEATURES ===
+ENABLE_ML_ANALYTICS=true
+ENABLE_ANOMALY_DETECTION=true
+ENABLE_SENTIMENT_ANALYSIS=true
+ENABLE_OAUTH2=true
+ENABLE_MFA=true
+
+# === EMAIL ===
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASSWORD=your-sendgrid-api-key
+SMTP_FROM=info@yourdomain.com
+
+# === APP SETTINGS ===
+APP_ENV=staging
+AUTH_ENFORCED=true
+BOOTSTRAP_ADMIN_TOKEN=arkashri-bootstrap

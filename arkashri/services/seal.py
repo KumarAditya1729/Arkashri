@@ -147,9 +147,9 @@ async def _rule_snapshot_hash(session: AsyncSession) -> str:
     )).all()
     snapshot = sorted(
         [{"rule_key": r.rule_key, "version": r.version, "signal_value": r.signal_value} for r in rules],
-        key=lambda x: x["rule_key"],
+        key=lambda x: str(x["rule_key"]),
     )
-    return hashlib.sha256(_canonical_json(snapshot)).hexdigest()
+    return hashlib.sha256(_canonical_json({"rules": snapshot})).hexdigest()
 
 
 async def _active_weight_version(session: AsyncSession) -> int | None:
@@ -231,7 +231,7 @@ async def _build_seal_payload(
     )).all()
 
     decision_hash_tree = hashlib.sha256(
-        _canonical_json(sorted(d.output_hash for d in decisions))
+        _canonical_json({"hashes": sorted(d.output_hash for d in decisions)})
     ).hexdigest()
 
     return {
@@ -260,7 +260,7 @@ async def _build_seal_payload(
             "system_version":     SYSTEM_VERSION,
         },
         "materiality": {
-            "amount":         _canonical_float(final_opinion.materiality_amount if final_opinion else None),
+            "amount":         _canonical_float(final_opinion.materiality_amount) if final_opinion and final_opinion.materiality_amount is not None else 0.0,
             "weight_version": final_opinion.weight_set_version if final_opinion else None,
         },
         "partner_signatures": sorted(

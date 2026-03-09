@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arkashri-worker
+  labels:
+    app: arkashri-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: arkashri-worker
+  template:
+    metadata:
+      labels:
+        app: arkashri-worker
+    spec:
+      containers:
+      - name: arkashri-worker
+        image: arkashri/api:latest
+        imagePullPolicy: Always
+        command: ["arq", "arkashri.worker.WorkerSettings"]
+        envFrom:
+        - secretRef:
+            name: arkashri-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2"

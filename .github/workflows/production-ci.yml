@@ -44,6 +44,14 @@ jobs:
         python-version: "3.11"
         cache: 'pip'
         
+    - name: Run Trivy Vulnerability Scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        ignore-unfixed: true
+        format: 'table'
+        severity: 'CRITICAL,HIGH'
+
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip

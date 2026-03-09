@@ -18,6 +18,23 @@ services:
       timeout: 5s
       retries: 20
 
+  read_replica:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: arkashri_replica
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5441:5432"
+    volumes:
+      - pg_replica_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d arkashri_replica" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -40,11 +57,19 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://arkashri:arkashri@db:5432/arkashri
+      DATABASE_READ_REPLICA_URL: postgresql+asyncpg://postgres:postgres@read_replica:5432/arkashri_replica
       REDIS_URL: redis://redis:6379/0
+      ENABLE_ADVANCED_RATE_LIMITING: "true"
+      ENABLE_LOAD_BALANCER: "true"
+      API_REPLICAS: "3"
+      DB_POOL_SIZE: "20"
+      DB_MAX_OVERFLOW: "30"
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      read_replica:
         condition: service_healthy
     # Auto-run migrations on every startup, then start the API
     command: >
@@ -64,11 +89,17 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      target: development
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       NEXT_PUBLIC_API_URL: http://api:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
     depends_on:
       api:
         condition: service_healthy
@@ -109,3 +140,4 @@ services:
 
 volumes:
   pg_data:
+  pg_replica_data:

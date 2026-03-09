@@ -895,10 +895,10 @@ class Engagement(Base):
     jurisdiction: Mapped[str] = mapped_column(String(20), nullable=False)
     client_name: Mapped[str] = mapped_column(String(255), nullable=False)
     engagement_type: Mapped[EngagementType] = mapped_column(
-        Enum(EngagementType, name="engagement_type"), nullable=False, default=EngagementType.STATUTORY_AUDIT
+        Enum(EngagementType, name="engagement_type", values_callable=lambda x: [e.value for e in x]), nullable=False, default=EngagementType.STATUTORY_AUDIT
     )
     status: Mapped[EngagementStatus] = mapped_column(
-        Enum(EngagementStatus, name="engagement_status"), nullable=False, default=EngagementStatus.PENDING
+        Enum(EngagementStatus, name="engagement_status", values_callable=lambda x: [e.value for e in x]), nullable=False, default=EngagementStatus.PENDING
     )
     independence_cleared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     kyc_cleared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -1344,3 +1344,29 @@ class ERPSyncLog(Base):
 
 Index("ix_erp_connection_tenant", ERPConnection.tenant_id, ERPConnection.erp_system)
 Index("ix_erp_sync_log_connection", ERPSyncLog.connection_id, ERPSyncLog.started_at)
+
+class SystemAuditLog(Base):
+    """
+    Granular audit trail for platform-wide administrative and sensitive actions.
+    Records: who, what, when, where, and why (justification).
+    Mandatory for SOC2 / ISO 27001 compliance.
+    """
+    __tablename__ = "system_audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(100), index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), index=True)
+    user_email: Mapped[str | None] = mapped_column(String(255))
+    
+    action: Mapped[str] = mapped_column(String(100), index=True)  # e.g., "USER_LOGIN", "ENGAGEMENT_SEALED", "RULE_UPDATED"
+    resource_type: Mapped[str] = mapped_column(String(50))      # e.g., "USER", "ENGAGEMENT", "RULE_SET"
+    resource_id: Mapped[str | None] = mapped_column(String(100))
+    
+    status: Mapped[str] = mapped_column(String(20), default="SUCCESS") # SUCCESS, FAILURE, DENIED
+    extra_metadata: Mapped[dict | None] = mapped_column(JSON) # Detailed context (diffs, IPs, etc.)
+    
+    request_id: Mapped[str | None] = mapped_column(String(100))
+    ip_address: Mapped[str | None] = mapped_column(String(45))
+    user_agent: Mapped[str | None] = mapped_column(Text)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: arkashri-api-service
+  namespace: arkashri
+  labels:
+    app: arkashri-api
+spec:
+  selector:
+    app: arkashri-api
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: arkashri-worker-service
+  namespace: arkashri
+  labels:
+    app: arkashri-worker
+spec:
+  selector:
+    app: arkashri-worker
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP

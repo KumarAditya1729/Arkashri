@@ -23,9 +23,18 @@ from arkashri.services.opinion import generate_draft_opinion
 from arkashri.services.seal import generate_audit_seal
 from arkashri.services.esg import upsert_esg_metrics
 from arkashri.services.forensic import upsert_forensic_profile
+from arkashri.services.engagement import create_engagement, get_engagement, compute_materiality, list_engagements
 from arkashri.dependencies import require_api_client, AuthContext
+from typing import List
 
 router = APIRouter()
+
+@router.get("/engagements", response_model=List[EngagementOut])
+async def get_all_engagements(
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.READ_ONLY, ClientRole.REVIEWER})),
+) -> List[EngagementOut]:
+    return await list_engagements(session)
 
 @router.post("/engagements", response_model=EngagementOut, status_code=status.HTTP_201_CREATED)
 async def create_new_engagement(

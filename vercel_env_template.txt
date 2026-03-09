@@ -1,0 +1,19 @@
+# Arkashri Frontend - Vercel Environment Variables
+# Copy these to your Vercel project settings
+
+# === API CONNECTION ===
+NEXT_PUBLIC_API_URL=https://your-backend-name.up.railway.app
+NEXT_PUBLIC_WS_URL=wss://your-backend-name.up.railway.app/ws
+
+# === EXAMPLE VALUES ===
+# After deploying to Railway, your backend URL will look like:
+# https://arkashri-backend.up.railway.app
+# 
+# So set:
+# NEXT_PUBLIC_API_URL=https://arkashri-backend.up.railway.app
+# NEXT_PUBLIC_WS_URL=wss://arkashri-backend.up.railway.app/ws
+
+# === LOCAL DEVELOPMENT ===
+# For local development, use:
+# NEXT_PUBLIC_API_URL=http://localhost:8000
+# NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws

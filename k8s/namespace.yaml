@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arkashri
+  labels:
+    name: arkashri
+    app: arkashri-audit-os
+spec: {}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    app: arkashri-monitoring

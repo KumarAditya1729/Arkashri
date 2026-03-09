@@ -99,3 +99,11 @@ async def compute_materiality(
     await session.commit()
     await session.refresh(assessment)
     return assessment
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
+from arkashri.models import Engagement
+
+async def list_engagements(session: AsyncSession) -> List[Engagement]:
+    result = await session.execute(select(Engagement).order_by(Engagement.created_at.desc()))
+    return result.scalars().all()

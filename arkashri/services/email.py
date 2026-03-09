@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import structlog
 from typing import List, Optional
+from circuitbreaker import circuit
 
 import aiobotocore.session
 from botocore.exceptions import ClientError
@@ -11,6 +12,7 @@ from arkashri.config import get_settings
 logger = structlog.get_logger("services.email")
 settings = get_settings()
 
+@circuit(failure_threshold=5, recovery_timeout=60)
 async def send_email(
     to_addresses: List[str],
     subject: str,
@@ -48,7 +50,7 @@ async def send_email(
         }
     }
     if body_html:
-        message["Body"]["Html"] = {"Data": body_html, "Charset": "UTF-8"}
+        message["Body"]["Html"] = {"Data": body_html, "Charset": "UTF-8"} # type: ignore
 
     source_email = settings.smtp_from
 

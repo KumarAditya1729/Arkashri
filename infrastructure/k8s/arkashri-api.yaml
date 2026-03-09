@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arkashri-api
+  labels:
+    app: arkashri-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: arkashri-api
+  template:
+    metadata:
+      labels:
+        app: arkashri-api
+    spec:
+      containers:
+      - name: arkashri-api
+        image: arkashri/api:latest
+        imagePullPolicy: Always
+        command: ["gunicorn", "arkashri.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000"]
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - secretRef:
+            name: arkashri-secrets
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: arkashri-api
+spec:
+  selector:
+    app: arkashri-api
+  ports:
+  - port: 80
+    targetPort: 8000
+  type: ClusterIP

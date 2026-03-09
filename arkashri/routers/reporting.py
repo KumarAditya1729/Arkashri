@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
+from typing import Any
+from dataclasses import asdict
 from fastapi_cache.decorator import cache
 
 from arkashri.db import get_session
@@ -218,25 +220,16 @@ async def get_coverage(
     )
 
 
-@router.get("/metrics/scorecard/{tenant_id}/{jurisdiction}", response_model=ScorecardOut)
+@router.get("/metrics/scorecard/{tenant_id}/{jurisdiction}")
 @cache(expire=60)
 async def get_scorecard(
     tenant_id: str,
     jurisdiction: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
-) -> ScorecardOut:
+) -> dict[str, Any]:
     stats = await compute_scorecard(session, tenant_id, jurisdiction)
-    return ScorecardOut(
-        tenant_id=tenant_id,
-        jurisdiction=jurisdiction,
-        computed_at=stats["computed_at"],
-        total_decisions=stats["total_decisions"],
-        rules_triggered=stats["rules_triggered"],
-        exceptions_opened=stats["exceptions_opened"],
-        average_risk=stats["average_risk"],
-        risk_distribution=stats["risk_distribution"],
-    )
+    return asdict(stats)
 
 
 # ─── Automation Score ─────────────────────────────────────────────────────────
@@ -318,12 +311,12 @@ async def get_automation_score(
     # 4. Exception auto-triage
     total_exc = (await session.scalar(select(func.count(ExceptionCase.id)))) or 0
     auto_exc  = (await session.scalar(
-        select(func.count(ExceptionCase.id)).where(ExceptionCase.resolution_status == "RESOLVED")
+        select(func.count(ExceptionCase.id)).where(ExceptionCase.status == "RESOLVED")
     )) or 0
 
     # 5. Risk quantification
     risk_scored = (await session.scalar(
-        select(func.count(Decision.id)).where(Decision.risk_score.isnot(None))
+        select(func.count(Decision.id)).where(Decision.final_risk.isnot(None))
     )) or 0
 
     def _dim(

@@ -22,7 +22,7 @@ import datetime
 import random
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -33,7 +33,7 @@ from arkashri.models import (
     ERPConnection, ERPSyncLog, ERPSystem, ERPSyncStatus,
     ClientRole,
 )
-from arkashri.dependencies import require_api_client, AuthContext
+from arkashri.dependencies import require_api_client, AuthContext, limiter
 from arkashri.services.erp_adapter import normalize_batch
 from arkashri.services.crypto import encrypt_dict
 
@@ -170,7 +170,9 @@ async def list_connections(
     response_model=SyncResult,
     summary="Sync a batch of raw ERP records → normalize → ingest into financial_transaction",
 )
+@limiter.limit("2/minute")
 async def run_erp_sync(
+    request: Request,
     connection_id: uuid.UUID,
     payload: SyncRequest,
     db: AsyncSession = Depends(get_session),
@@ -188,25 +190,49 @@ async def run_erp_sync(
         raise HTTPException(409, "ERP connection is inactive.")
 
     now = datetime.datetime.now(datetime.timezone.utc)
+    count = len(payload.records)
 
     sync_log = ERPSyncLog(
         connection_id=connection_id,
         tenant_id=auth.tenant_id,
         erp_system=conn.erp_system,
         status=ERPSyncStatus.RUNNING,
-        records_submitted=len(payload.records),
+        records_submitted=count,
         date_range_from=payload.date_range_from,
         date_range_to=payload.date_range_to,
         started_at=now,
     )
     db.add(sync_log)
     await db.commit()
+    await db.refresh(sync_log)
 
+    # If large batch (> 100), offload to ARQ worker
+    if count > 100 and request.app.state.redis_pool:
+        await request.app.state.redis_pool.enqueue_job(
+            "ingest_erp_batch_task",
+            connection_id=str(connection_id),
+            tenant_id=auth.tenant_id,
+            jurisdiction=payload.jurisdiction,
+            records=payload.records,
+            sync_log_id=str(sync_log.id),
+        )
+        return SyncResult(
+            sync_log_id=str(sync_log.id),
+            erp_system=conn.erp_system.value,
+            status="ACCEPTED",
+            records_submitted=count,
+            records_ingested=0,
+            records_failed=0,
+            records_flagged=0,
+            sync_duration_ms=0,
+            flagged_refs=[],
+        )
+
+    # Otherwise, process synchronously (same logic as before)
     t0 = time.monotonic()
     ingested = failed = flagged = 0
     flagged_refs: list[str] = []
 
-    # Normalize all records
     normalized = normalize_batch(conn.erp_system.value, payload.records)
 
     for norm_payload, payload_hash in normalized:
@@ -214,7 +240,6 @@ async def run_erp_sync(
             failed += 1
             continue
 
-        # Skip exact duplicates (same hash already exists)
         dup = (await db.scalars(
             select(Transaction).where(Transaction.payload_hash == payload_hash)
         )).first()
@@ -234,7 +259,6 @@ async def run_erp_sync(
             flagged += 1
             flagged_refs.append(norm_payload.get("ref", ""))
 
-    # Determine final status
     if ingested == 0 and failed > 0:
         final_status = ERPSyncStatus.FAILED
     elif failed > 0:
@@ -245,16 +269,16 @@ async def run_erp_sync(
     completed_at = datetime.datetime.now(datetime.timezone.utc)
     duration_ms  = int((time.monotonic() - t0) * 1000)
 
-    sync_log.status            = final_status
-    sync_log.records_ingested  = ingested
-    sync_log.records_failed    = failed
-    sync_log.records_flagged   = flagged
-    sync_log.sync_duration_ms  = duration_ms
-    sync_log.completed_at      = completed_at
+    sync_log.status = final_status
+    sync_log.records_ingested = ingested
+    sync_log.records_failed = failed
+    sync_log.records_flagged = flagged
+    sync_log.sync_duration_ms = duration_ms
+    sync_log.completed_at = completed_at
 
-    conn.last_synced_at          = completed_at
-    conn.last_sync_status        = final_status
-    conn.sync_count             += 1
+    conn.last_synced_at = completed_at
+    conn.last_sync_status = final_status
+    conn.sync_count += 1
     conn.total_records_ingested += ingested
 
     db.add(sync_log)
@@ -265,7 +289,7 @@ async def run_erp_sync(
         sync_log_id=str(sync_log.id),
         erp_system=conn.erp_system.value,
         status=final_status.value,
-        records_submitted=len(payload.records),
+        records_submitted=count,
         records_ingested=ingested,
         records_failed=failed,
         records_flagged=flagged,

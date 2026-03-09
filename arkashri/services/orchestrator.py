@@ -265,7 +265,16 @@ async def _build_step_output(run: AuditRun, step: AuditRunStep) -> dict:
         instruction = f"Execute action '{step.action}' for phase '{step.phase_name}'."
         evidence_data = step.input_payload.get("evidence_expected", {})
         
-        ai_verdict = await analyze_step_evidence(instruction, evidence_data)
+        # Resolve high-level objective from template for AI context
+        template = load_workflow_template(run.audit_type)
+        objective = template.get("objective", "Verify compliance and integrity.")
+        
+        ai_verdict = await analyze_step_evidence(
+            instruction, 
+            evidence_data, 
+            audit_type=run.audit_type,
+            audit_objective=objective
+        )
         
         return {
             "run_id": str(run.id),

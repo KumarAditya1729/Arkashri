@@ -176,8 +176,10 @@ async def _rules_from_snapshot(session: AsyncSession, rule_snapshot: list[dict[s
     if not rule_snapshot:
         cache_key = "rules:active:latest"
         cached = await cache_get(cache_key)
-        if cached:
-            return [RuleRegistry(**r) for r in cached]
+        if cached and isinstance(cached, dict):
+            cached_rules = cached.get("rules", [])
+            if isinstance(cached_rules, list):
+                return [RuleRegistry(**r) for r in cached_rules if isinstance(r, dict)]
 
         result = await session.scalars(select(RuleRegistry).where(RuleRegistry.is_active.is_(True)))
         rules = list(result)
@@ -193,17 +195,17 @@ async def _rules_from_snapshot(session: AsyncSession, rule_snapshot: list[dict[s
                 "is_active": r.is_active
             } for r in rules
         ]
-        await cache_set(cache_key, rules_data, ttl=3600)
+        await cache_set(cache_key, {"rules": rules_data}, ttl=3600)
         return rules
 
-    rules: list[RuleRegistry] = []
+    matched_rules: list[RuleRegistry] = []
     for item in rule_snapshot:
         rk = item["rule_key"]
         rv = item["version"]
         r_key = f"rule:{rk}:v:{rv}"
         cached = await cache_get(r_key)
-        if cached:
-            rules.append(RuleRegistry(**cached))
+        if cached and isinstance(cached, dict):
+            matched_rules.append(RuleRegistry(**cached))
             continue
 
         rule = await session.scalar(
@@ -214,7 +216,7 @@ async def _rules_from_snapshot(session: AsyncSession, rule_snapshot: list[dict[s
         if rule is None:
             raise ValueError(f"Missing rule for replay: {rk}@{rv}")
         
-        rules.append(rule)
+        matched_rules.append(rule)
         await cache_set(r_key, {
             "rule_key": rule.rule_key,
             "version": rule.version,
@@ -225,7 +227,7 @@ async def _rules_from_snapshot(session: AsyncSession, rule_snapshot: list[dict[s
             "is_active": rule.is_active
         }, ttl=86400) # cache deterministic replay artifacts for 24h
 
-    return rules
+    return matched_rules
 
 
 def validate_weight_policy(weight_set: WeightSet, component_caps: dict[str, float]) -> None:

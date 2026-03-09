@@ -404,9 +404,11 @@ async def run_due_schedules(
         )
 
         tick.processed_schedules += 1
-        tick.run_ids.append(run.id)
+        if tick.run_ids is not None:
+            tick.run_ids.append(run.id)
         for alert in alerts:
-            tick.alert_ids.append(alert.id)
+            if tick.alert_ids is not None:
+                tick.alert_ids.append(alert.id)
 
         if run.status == IngestRunStatus.SUCCESS:
             tick.successful_runs += 1

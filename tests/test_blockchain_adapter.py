@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from arkashri.services.blockchain_adapter import list_adapters, run_adapter_anchor
 
 
@@ -33,7 +34,9 @@ def test_simulated_adapter_is_deterministic() -> None:
     assert first.tx_reference == second.tx_reference
 
 
-def test_polkadot_adapter_is_deterministic() -> None:
+@patch("arkashri.services.blockchain_adapter.get_settings")
+def test_polkadot_adapter_is_deterministic(mock_get_settings) -> None:
+    mock_get_settings.return_value.polkadot_enabled = False
     first = run_adapter_anchor(
         "POLKADOT",
         tenant_id="tenant_a",

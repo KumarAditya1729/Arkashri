@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arkashri-api
+  namespace: arkashri
+  labels:
+    app: arkashri-api
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: arkashri-api
+  template:
+    metadata:
+      labels:
+        app: arkashri-api
+        version: v1
+    spec:
+      containers:
+      - name: arkashri-api
+        image: arkashri:latest
+        ports:
+        - containerPort: 8000
+          protocol: TCP
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: arkashri-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: arkashri-secrets
+              key: redis-url
+        - name: ENABLE_PERFORMANCE_MONITORING
+          value: "true"
+        - name: ENABLE_ML_ANALYTICS
+          value: "true"
+        - name: ENABLE_MULTI_CHAIN_BLOCKCHAIN
+          value: "true"
+        - name: ENABLE_KUBERNETES_DEPLOYMENT
+          value: "true"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: models-volume
+          mountPath: /app/models

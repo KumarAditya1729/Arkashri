@@ -9,13 +9,15 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, String, ForeignKey, select
+from sqlalchemy import Column, DateTime, String, ForeignKey, select, Uuid
+from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from arkashri.db import Base, get_session
 from arkashri.models import ClientRole, Engagement
 from arkashri.dependencies import require_api_client, AuthContext
 from arkashri.services.evidence import evidence_service
+from arkashri.config import get_settings
 
 router = APIRouter()
 
@@ -24,8 +26,8 @@ router = APIRouter()
 class EvidenceRecord(Base):
     __tablename__ = "evidence_records"
 
-    id            = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    engagement_id = Column(String, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False, index=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    engagement_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("engagement.id", ondelete="CASCADE"), nullable=False, index=True)
     tenant_id     = Column(String, nullable=False, index=True)
     evd_ref       = Column(String, nullable=False)           # EVD-001 etc
     file_name     = Column(String, nullable=False)
@@ -78,6 +80,25 @@ async def upload_evidence(
     engagement = await session.get(Engagement, engagement_id)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
+
+    # Validate file type and size
+    settings = get_settings()
+    allowed_types = settings.allowed_file_types.split(',')
+    file_ext = f".{(file.filename or '').split('.')[-1].lower()}" if file.filename and '.' in file.filename else ""
+    
+    # Check file extension
+    if not any(file_ext == ext.strip() for ext in allowed_types):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"File type {file_ext} not allowed. Allowed types: {', '.join(allowed_types)}"
+        )
+    
+    # Check file size
+    if file.size and file.size > settings.max_file_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File size {file.size} bytes exceeds maximum allowed size of {settings.max_file_size} bytes"
+        )
 
     # Count existing for ref numbering
     count = len(list(await session.scalars(

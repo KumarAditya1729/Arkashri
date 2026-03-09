@@ -112,7 +112,7 @@ async def list_approval_requests(
     for req_id in request_ids:
         req = await _load_approval_with_actions(session, req_id)
         if req is not None:
-            requests.append(req)
+            requests.append(ApprovalRequestOut.model_validate(req))
     return requests
 
 
@@ -230,11 +230,12 @@ async def escalate_overdue_approvals(
                 "new_required_level": req.required_level,
             },
         )
-        escalated_ids.append(str(req.id))
+        escalated_ids.append(req.id)
 
     await session.commit()
     return ApprovalEscalationResponse(
+        tenant_id=tenant_id,
+        jurisdiction=jurisdiction,
         escalated_count=len(escalated_ids),
         escalated_request_ids=escalated_ids,
-        threshold_minutes=threshold_minutes,
     )

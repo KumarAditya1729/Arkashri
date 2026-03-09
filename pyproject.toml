@@ -33,11 +33,30 @@ dependencies = [
   "bcrypt>=4.0.0",
   "sentry-sdk[fastapi]>=2.0.0",
   "openai>=1.14.0",
+  "circuitbreaker>=2.1.3",
+  # ── Enhanced production dependencies ─────────────────────────────────────
+  "python-json-logger>=2.0.7",     # Structured JSON logging
+  "tenacity>=8.2.3",               # Retry mechanisms
+  "ujson>=5.8.0",                  # Fast JSON parsing
+  "aiosmtplib>=1.3.1",             # Async SMTP client
+  "psutil>=5.9.6",                 # System monitoring
+  "python-multipart>=0.0.9",       # File uploads
+  "pyotp>=2.9.0",                  # TOTP for MFA
+  "qrcode[pil]>=7.4.2",            # QR code generation
+  "authlib>=1.3.0",                # OAuth2 library
+  "httpx>=0.27.0",                 # HTTP client for OAuth2
+  "scikit-learn>=1.3.0",            # Machine learning
+  "pandas>=2.0.0",                 # Data analysis
+  "numpy>=1.24.0",                  # Numerical computing
+  "web3>=6.0.0",                    # Ethereum/Polygon blockchain
+  "substrate-interface>=1.7.10",      # Polkadot blockchain
+  "joblib>=1.3.0",                  # Model persistence
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3.0",
+  "pytest-asyncio>=0.21.0",
   "httpx>=0.27.0",
   "ruff>=0.6.0",
 ]

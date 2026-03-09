@@ -1,0 +1,38 @@
+groups:
+  - name: ArkashriAlerts
+    rules:
+      - alert: AICircuitBreakerOpen
+        expr: circuitbreaker_state{service="ai_fabric"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AI Inference Circuit Breaker Open"
+          description: "OpenAI inference is failing repeatedly. Circuit breaker is OPEN, blocking AI-driven audit steps."
+
+      - alert: HighARQQueueDepth
+        expr: arq_queue_depth > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Background Job Queue Depth"
+          description: "Audit archiving or email tasks are backing up. Queue depth is {{ $value }}."
+
+      - alert: DatabaseConnectionLatency
+        expr: rate(sqlalchemy_connection_seconds_sum[5m]) / rate(sqlalchemy_connection_seconds_count[5m]) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High DB Connection Latency"
+          description: "PostgreSQL connection acquisition is slow. Potential connection pool exhaustion."
+
+      - alert: AuditFailureRateHigh
+        expr: rate(audit_run_status_total{status="FAILED"}[10m]) / rate(audit_run_status_total[10m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit Failure Rate > 5%"
+          description: "More than 5% of audit runs are failing in the last 10 minutes."

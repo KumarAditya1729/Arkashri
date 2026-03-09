@@ -13,6 +13,7 @@ from arkashri.schemas import (
     RegulatoryDocumentOut,
     RegulatoryPromoteRequest,
     RegulatoryPromoteResponse,
+    RegulatoryIngestRunOut,
 )
 from arkashri.services.regulatory_ingestion import (
     bootstrap_regulatory_sources,
@@ -30,7 +31,7 @@ async def regulatory_bootstrap_sources(
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN})),
 ) -> RegulatorySourceBootstrapResponse:
     added, total = await bootstrap_regulatory_sources(session)
-    return RegulatorySourceBootstrapResponse(sources_added=added, total_active_sources=total)
+    return RegulatorySourceBootstrapResponse(inserted=added, existing=total)
 
 
 @router.get("/sources/{jurisdiction}", response_model=list[RegulatorySourceOut])
@@ -55,7 +56,7 @@ async def sync_specific_source(
         raise HTTPException(status_code=404, detail="Source not found")
         
     run = await ingest_source(session, source=source)
-    return RegulatorySyncResponse(run_id=run.id, status=run.status, fetched_count=run.fetched_count, inserted_count=run.inserted_count)
+    return RegulatorySyncResponse(runs=[RegulatoryIngestRunOut.model_validate(run)])
 
 
 @router.post("/sync/jurisdiction/{jurisdiction}", response_model=list[RegulatorySyncResponse])
@@ -65,10 +66,7 @@ async def sync_jurisdiction(
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> list[RegulatorySyncResponse]:
     runs = await ingest_jurisdiction_sources(session, jurisdiction=jurisdiction)
-    return [
-        RegulatorySyncResponse(run_id=r.id, status=r.status, fetched_count=r.fetched_count, inserted_count=r.inserted_count)
-        for r in runs
-    ]
+    return [RegulatorySyncResponse(runs=[RegulatoryIngestRunOut.model_validate(r) for r in runs])]
 
 
 @router.get("/documents/{jurisdiction}", response_model=list[RegulatoryDocumentOut])
@@ -102,9 +100,8 @@ async def promote_document(
             raise HTTPException(status_code=404, detail="Document not found")
         knowledge_doc_id = await promote_regulatory_document(session, regulatory_document=doc)
         return RegulatoryPromoteResponse(
-            document_id=doc.id,
-            is_promoted=doc.is_promoted,
-            promoted_knowledge_doc_id=knowledge_doc_id
+            regulatory_document_id=doc.id,
+            knowledge_document_id=knowledge_doc_id
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

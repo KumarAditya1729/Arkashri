@@ -60,7 +60,7 @@ async def record_decision_override(
     await session.refresh(override)
     
     logger.info(f"Professional Skepticism Override Recorded for Decision {decision_id} by {auth.client_name}")
-    return override
+    return DecisionOverrideOut.model_validate(override)
 
 @router.get("/reports/skepticism", response_model=dict)
 async def generate_skepticism_report(
@@ -104,6 +104,8 @@ async def generate_skepticism_report(
     }
     
     for o in overrides:
-        report["overrides_by_auditor"][o.overridden_by_user] = report["overrides_by_auditor"].get(o.overridden_by_user, 0) + 1
+        auditor = o.overridden_by_user
+        current: int = report["overrides_by_auditor"].get(auditor, 0) # type: ignore
+        report["overrides_by_auditor"][auditor] = current + 1 # type: ignore
         
     return report

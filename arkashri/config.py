@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     auth_enforced: bool = False
     bootstrap_admin_token: str = "arkashri-bootstrap"
+    jwt_algorithm: str = "HS256"
+    jwt_expiry_minutes: int = 60
 
     independence_webhook_url: str | None = None
 
@@ -58,6 +60,67 @@ class Settings(BaseSettings):
 
     # ── Artificial Intelligence Fabric (OpenAI) ───────────────────────────────
     openai_api_key: str | None = None
+    ai_model_primary: str = "gpt-4-turbo"
+    ai_model_fallback: str = "gpt-4o"
+    ai_confidence_threshold: float = 0.85
+    ai_max_tokens: int = 4096
+    ai_temperature: float = 0.3
+
+    # ── File Storage ──────────────────────────────────────────────────────────────
+    storage_provider: str = "local"
+    upload_dir: str = "./uploads"
+    max_file_size: int = 52428800
+    allowed_file_types: str = "application/pdf,image/jpeg,image/png,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    # ── Production Settings ───────────────────────────────────────────────────────
+    # Database connection settings
+    db_pool_timeout: int = 30
+    db_pool_recycle: int = 3600
+    db_echo: bool = False
+    
+    # Rate limiting
+    rate_limit_requests: int = 100
+    rate_limit_window: int = 60  # seconds
+    
+    # Caching
+    cache_ttl: int = 300  # seconds
+    cache_max_size: int = 1000
+    
+    # Request/Response settings
+    max_request_size: int = 10 * 1024 * 1024  # 10MB
+    request_timeout: int = 30
+    max_concurrent_requests: int = 1000
+    
+    # Health check settings
+    health_check_interval: int = 30
+    health_check_timeout: int = 5
+    
+    # Backup settings
+    backup_enabled: bool = False
+    backup_retention_days: int = 30
+    backup_schedule: str = "0 2 * * *"  # cron format
+    
+    # Performance monitoring
+    enable_request_logging: bool = True
+    enable_performance_metrics: bool = True
+    metrics_port: int = 9090
+    
+    # Security headers
+    allowed_hosts: str = "*"
+    cors_origins: list[str] = [
+        "http://127.0.0.1:5173", "http://localhost:5173",
+        "http://127.0.0.1:4173", "http://localhost:4173",
+        "http://localhost:3000", "http://127.0.0.1:3000",
+    ]
+    
+    # Graceful shutdown
+    shutdown_timeout: int = 30
+    worker_timeout: int = 120
+    
+    # Feature flags for production
+    enable_compression: bool = True
+    enable_request_id: bool = True
+    enable_user_context: bool = True
 
 
 @lru_cache
