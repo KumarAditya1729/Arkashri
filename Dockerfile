@@ -39,7 +39,7 @@ RUN chown -R arkashri:arkashri /app
 USER arkashri
 
 # Expose API port
-EXPOSE 8000
+EXPOSE 8080
 
 # Default command can be overridden by Kubernetes for the Worker pod
-CMD ["gunicorn", "arkashri.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "arkashri.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8080"]

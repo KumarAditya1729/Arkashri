@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "name": "arkashri-frontend",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/next"
+    }
+  ],
+  "env": {
+    "NEXT_PUBLIC_API_URL": "@api_url",
+    "NEXT_PUBLIC_WS_URL": "@ws_url"
+  },
+  "regions": ["iad1"],
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "devCommand": "npm run dev",
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ]
+}

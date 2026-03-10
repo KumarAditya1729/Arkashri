@@ -53,7 +53,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "8001:8000"
+      - "8001:8080"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://arkashri:arkashri@db:5432/arkashri
@@ -75,10 +75,10 @@ services:
     command: >
       sh -c "
         alembic upgrade head &&
-        gunicorn arkashri.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+        gunicorn arkashri.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8080
       "
     healthcheck:
-      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1" ]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\" || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 5
