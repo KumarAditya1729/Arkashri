@@ -61,29 +61,29 @@ async def audit_stream(
     Establish a persistent real-time connection to stream audit progress 
     events to multiple frontend client dashboards simultaneously.
     """
+    channel = f"audit:{tenant_id}:{jurisdiction}"
     try:
-        # Accept the WebSocket connection first
-        await websocket.accept()
-        
-        # For now, allow connections without strict authentication
-        # In production, you might want to validate the api_key here
+        # manager.connect accepts the WebSocket — do NOT call accept() here too
+        await manager.connect(channel, websocket)
+
         if api_key:
             logger.info("websocket_auth_attempt", tenant_id=tenant_id, api_key_provided=True)
         else:
             logger.info("websocket_auth_attempt", tenant_id=tenant_id, api_key_provided=False)
-        
-        channel = f"audit:{tenant_id}:{jurisdiction}"
-        await manager.connect(channel, websocket)
-        
+
         try:
             while True:
-                # The client doesn't need to send us data, it just listens.
-                # However, we must continuously receive to keep the socket alive
-                # and catch client disconnections.
+                # Keep alive — receive so we detect client disconnects
                 await websocket.receive_text()
         except WebSocketDisconnect:
             manager.disconnect(channel, websocket)
-            
+
+    except WebSocketDisconnect:
+        manager.disconnect(channel, websocket)
     except Exception as e:
         logger.error("websocket_connection_error", error=str(e), tenant_id=tenant_id)
-        await websocket.close(code=4000, reason=f"Connection error: {str(e)}")
+        manager.disconnect(channel, websocket)
+        try:
+            await websocket.close(code=4000, reason=f"Connection error: {str(e)}")
+        except Exception:
+            pass  # Already closed

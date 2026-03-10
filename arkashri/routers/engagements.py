@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from arkashri.db import get_session
-from arkashri.models import ClientRole
+from arkashri.models import ClientRole, Engagement
 from arkashri.schemas import (
     EngagementCreate,
     EngagementOut,
@@ -42,10 +43,8 @@ async def list_engagements(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.READ_ONLY, ClientRole.REVIEWER})),
 ) -> list[EngagementOut]:
-    """List all engagements for the authenticated tenant."""
-    from sqlalchemy import select as sa_select
-    from arkashri.models import Engagement
-    results = list(await session.scalars(sa_select(Engagement).order_by(Engagement.created_at.desc())))
+    """List all engagements ordered by most recent first."""
+    results = list(await session.scalars(select(Engagement).order_by(Engagement.created_at.desc())))
     return [EngagementOut.model_validate(e) for e in results]
 
 
