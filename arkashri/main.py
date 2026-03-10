@@ -266,6 +266,16 @@ async def cleanup_middleware_resources(app: FastAPI):
 from arkashri.services.health import get_full_health_status
 from arkashri.routers.engine_status import router as status_router
 
+@app.get("/", include_in_schema=False)
+async def root():
+    """Root endpoint"""
+    return {
+        "app": "Arkashri Audit OS",
+        "version": "1.0.0",
+        "status": "active",
+        "message": "API is running"
+    }
+
 @app.get("/health", include_in_schema=False)
 async def health(db: AsyncSession = Depends(get_session)):
     """
