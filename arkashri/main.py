@@ -11,17 +11,30 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from arq import create_pool
 from arq.connections import RedisSettings
 
+import os
 import uuid
 import structlog
 import asyncio
 
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+# ── Conditional heavy imports (skip on low-resource envs to save RAM) ─────────
+# OpenTelemetry — only if ENABLE_TRACING=true
+if os.getenv("ENABLE_TRACING", "false").lower() == "true":
+    from opentelemetry import trace as _otel_trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    _TRACING_ENABLED = True
+else:
+    _TRACING_ENABLED = False
 
-from prometheus_fastapi_instrumentator import Instrumentator
+# Prometheus — only if ENABLE_METRICS=true
+if os.getenv("ENABLE_METRICS", "false").lower() == "true":
+    from prometheus_fastapi_instrumentator import Instrumentator
+    _METRICS_ENABLED = True
+else:
+    _METRICS_ENABLED = False
+
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
 import redis.asyncio as redis_async
@@ -58,6 +71,7 @@ from arkashri.utils.error_handling import error_handler, ErrorContext
 from arkashri.db import db_manager
 from arkashri.services.backup import disaster_recovery_service
 
+# Sentry — only if DSN is configured
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
@@ -75,12 +89,13 @@ if settings.sentry_dsn:
         environment=settings.app_env,
     )
 
-# ── OpenTelemetry setup ───────────────────────────────────────────────────────
-resource  = Resource.create({"service.name": "arkashri-decision-engine"})
-provider  = TracerProvider(resource=resource)
-processor = BatchSpanProcessor(ConsoleSpanExporter())
-provider.add_span_processor(processor)
-trace.set_tracer_provider(provider)
+# ── OpenTelemetry setup (only if ENABLE_TRACING=true) ────────────────────────
+if _TRACING_ENABLED:
+    resource  = Resource.create({"service.name": "arkashri-decision-engine"})
+    provider  = TracerProvider(resource=resource)
+    processor = BatchSpanProcessor(ConsoleSpanExporter())
+    provider.add_span_processor(processor)
+    _otel_trace.set_tracer_provider(provider)
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
