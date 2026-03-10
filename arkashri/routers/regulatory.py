@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -50,11 +50,9 @@ async def sync_specific_source(
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> RegulatorySyncResponse:
-    from fastapi import HTTPException
     source = await session.scalar(select(RegulatorySource).where(RegulatorySource.source_key == source_key))
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
-        
     run = await ingest_source(session, source=source)
     return RegulatorySyncResponse(runs=[RegulatoryIngestRunOut.model_validate(run)])
 
@@ -93,7 +91,6 @@ async def promote_document(
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.REVIEWER})),
 ) -> RegulatoryPromoteResponse:
-    from fastapi import HTTPException
     try:
         doc = await session.scalar(select(RegulatoryDocument).where(RegulatoryDocument.id == document_id))
         if not doc:
@@ -105,3 +102,62 @@ async def promote_document(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ── Gap 7: Regulatory Updates Inbox ──────────────────────────────────────────
+
+@router.get("/updates", summary="Regulatory updates inbox (ICAI / SEBI / MCA)")
+async def list_regulatory_updates(
+    authority: str | None = Query(default=None, description="Filter by ICAI, SEBI, or MCA"),
+    limit: int = Query(default=50, ge=1, le=200),
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(
+        require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})
+    ),
+) -> list[dict]:
+    """
+    Regulatory inbox — most recent ICAI SA circulars, SEBI circulars, MCA amendments.
+    Use ?authority=ICAI|SEBI|MCA to filter by source.
+    New items appear after the daily feed job runs (or POST /updates/run-now).
+    """
+    stmt = select(RegulatoryDocument).order_by(RegulatoryDocument.ingested_at.desc()).limit(limit)
+    if authority:
+        stmt = select(RegulatoryDocument).where(
+            RegulatoryDocument.authority == authority.upper()
+        ).order_by(RegulatoryDocument.ingested_at.desc()).limit(limit)
+
+    docs = list(await session.scalars(stmt))
+    return [
+        {
+            "id": doc.id,
+            "authority": doc.authority,
+            "jurisdiction": doc.jurisdiction,
+            "title": doc.title,
+            "summary": doc.summary,
+            "url": doc.document_url,
+            "published_on": doc.published_on.isoformat() if doc.published_on else None,
+            "ingested_at": doc.ingested_at.isoformat(),
+            "is_promoted": doc.is_promoted,
+            "content_hash": doc.content_hash,
+        }
+        for doc in docs
+    ]
+
+
+@router.post("/updates/run-now", summary="Trigger immediate regulatory feed refresh (ICAI + SEBI + MCA)")
+async def run_regulatory_feeds_now(
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN})),
+) -> dict:
+    """
+    Immediately fetches all three regulatory feeds and inserts any new documents.
+    Returns count of new items per source. Use this to seed the inbox or for manual refresh.
+    """
+    from arkashri.services.regulatory_feed import run_all_feeds
+    results = await run_all_feeds(session)
+    total_new = sum(v for v in results.values() if v >= 0)
+    return {
+        "status": "completed",
+        "new_items_by_source": results,
+        "total_new": total_new,
+    }
