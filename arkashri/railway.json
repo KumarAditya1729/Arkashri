@@ -3,7 +3,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "gunicorn -k uvicorn.workers.UvicornWorker arkashri.main:app --bind 0.0.0.0:$PORT --workers 4",
+    "startCommand": "./railway_start.sh",
     "healthcheckPath": "/",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
