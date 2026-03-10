@@ -37,10 +37,13 @@ class MLAnalyticsService:
         self.sentiment_analyzer = None
         self.scaler = StandardScaler()
         
-        # Create models directory if it doesn't exist
-        self.models_path.mkdir(parents=True, exist_ok=True)
-        
-        self._load_models()
+        # Skip heavy ML model loading on low-resource envs (ENABLE_ML != true)
+        import os
+        if os.getenv("ENABLE_ML", "false").lower() == "true":
+            self.models_path.mkdir(parents=True, exist_ok=True)
+            self._load_models()
+        else:
+            logger.info("ml_models_skipped", reason="ENABLE_ML not set — running in rule-only mode")
     
     def _load_models(self):
         """Load pre-trained models or initialize new ones"""
@@ -517,5 +520,5 @@ class MLAnalyticsService:
         except Exception as e:
             logger.error("model_saving_error", error=str(e))
 
-# Global service instance
+# Global service instance — initialized lazily (no ML models on startup unless ENABLE_ML=true)
 ml_analytics_service = MLAnalyticsService()

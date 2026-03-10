@@ -30,9 +30,13 @@ class MultiChainBlockchainService:
         self.smart_contract_address = getattr(self.settings, 'smart_contract_address', '')
         self.confirmation_blocks = getattr(self.settings, 'blockchain_confirmation_blocks', 3)
         
-        # Initialize blockchain connections
+        # Initialize blockchain connections — skip on low-resource envs (ENABLE_BLOCKCHAIN != true)
         self.connections = {}
-        self._initialize_connections()
+        import os
+        if os.getenv("ENABLE_BLOCKCHAIN", "false").lower() == "true":
+            self._initialize_connections()
+        else:
+            logger.info("blockchain_connections_skipped", reason="ENABLE_BLOCKCHAIN not set")
     
     def _initialize_connections(self):
         """Initialize connections to all configured blockchain networks"""
