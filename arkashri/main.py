@@ -294,7 +294,7 @@ async def health(db: AsyncSession = Depends(get_session)):
     })
     
     return JSONResponse(
-        status_code=200 if health_status["status"] == "healthy" else 503,
+        status_code=503 if health_status["status"] == "unhealthy" else 200,
         content=health_status,
     )
 

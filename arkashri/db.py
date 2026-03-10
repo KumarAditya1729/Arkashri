@@ -172,11 +172,11 @@ class DatabaseManager:
         pool = engine.pool
         
         return {
-            "pool_size": pool.size(),
-            "checked_in": pool.checkedin(),
-            "checked_out": pool.checkedout(),
-            "overflow": pool.overflow(),
-            "invalidated": pool.invalidated(),
+            "pool_size": getattr(pool, "size", lambda: 0)(),
+            "checked_in": getattr(pool, "checkedin", lambda: 0)(),
+            "checked_out": getattr(pool, "checkedout", lambda: 0)(),
+            "overflow": getattr(pool, "overflow", lambda: 0)(),
+            "invalidated": getattr(pool, "invalidated", lambda: 0)(),
             "is_healthy": self.health_checker.is_healthy(),
         }
     

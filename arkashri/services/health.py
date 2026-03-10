@@ -63,10 +63,15 @@ async def get_full_health_status(db: AsyncSession) -> dict[str, Any]:
         redis_task, openai_task, blockchain_task
     )
     
-    all_ok = db_ok and redis_ok and openai_ok and all(blockchain_results.values())
-    
+    if not (db_ok and redis_ok):
+        status = "unhealthy"
+    elif not (openai_ok and all(blockchain_results.values())):
+        status = "degraded"
+    else:
+        status = "healthy"
+        
     return {
-        "status": "healthy" if all_ok else "degraded",
+        "status": status,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "dependencies": {
             "database": "ok" if db_ok else "unreachable",

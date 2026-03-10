@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8001'
 
 export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
     const { path } = await params
@@ -30,7 +30,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ p
 
 async function handleProxy(request: Request, path: string) {
     const searchParams = new URL(request.url).search
-    const targetUrl = `${BACKEND_URL}/api/${path}${searchParams}`
+    const apiPath = path.startsWith('api/') ? path : `api/${path}`
+    const targetUrl = `${BACKEND_URL.replace(/\/+$/, '')}/${apiPath}${searchParams}`
 
     const cookieStore = await cookies()
     const token = cookieStore.get('arkashri_token')?.value

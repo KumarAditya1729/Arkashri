@@ -11,7 +11,7 @@ from fastapi_cache.decorator import cache
 from arkashri.db import get_session
 from arkashri.models import (
     ClientRole, ReportJob,
-    AuditRunStep, Decision, ApprovalRequest, ExceptionCase,
+    AuditRunStep, AuditStepStatus, Decision, ApprovalRequest, ApprovalStatus, ExceptionCase,
 )
 from arkashri.schemas import (
     ReportOut,
@@ -299,19 +299,20 @@ async def get_automation_score(
     # 2. AuditRun step completion
     total_steps     = (await session.scalar(select(func.count(AuditRunStep.id)))) or 0
     succeeded_steps = (await session.scalar(
-        select(func.count(AuditRunStep.id)).where(AuditRunStep.status == "SUCCEEDED")
+        select(func.count(AuditRunStep.id)).where(AuditRunStep.status == AuditStepStatus.COMPLETED)
     )) or 0
 
     # 3. Approval auto-clearance
     total_approvals = (await session.scalar(select(func.count(ApprovalRequest.id)))) or 0
     auto_approvals  = (await session.scalar(
-        select(func.count(ApprovalRequest.id)).where(ApprovalRequest.status == "APPROVED")
+        select(func.count(ApprovalRequest.id)).where(ApprovalRequest.status == ApprovalStatus.APPROVED)
     )) or 0
 
     # 4. Exception auto-triage
+    from arkashri.models import ExceptionStatus
     total_exc = (await session.scalar(select(func.count(ExceptionCase.id)))) or 0
     auto_exc  = (await session.scalar(
-        select(func.count(ExceptionCase.id)).where(ExceptionCase.status == "RESOLVED")
+        select(func.count(ExceptionCase.id)).where(ExceptionCase.status == ExceptionStatus.RESOLVED)
     )) or 0
 
     # 5. Risk quantification

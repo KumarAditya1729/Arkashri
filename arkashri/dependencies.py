@@ -175,7 +175,7 @@ def require_api_client(allowed_roles: set[ClientRole] | None = None):
         _tenant_header: str = Header(default="default_tenant", alias="X-Arkashri-Tenant"),
     ) -> AuthContext:
         # Enforce Postgres RLS dynamically on the current connection context
-        await session.execute(text("SET LOCAL app.current_tenant = :tenant_id"), {"tenant_id": _tenant_header})
+        await session.execute(text("SELECT set_config('app.current_tenant', :tenant_id, true)"), {"tenant_id": _tenant_header})
 
         if not settings.auth_enforced:
             return build_system_context(tenant_id=_tenant_header)

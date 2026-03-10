@@ -26,7 +26,7 @@ from tenacity import (
     before_sleep_log,
 )
 
-from arkashri.logging_config import performance_logger
+
 
 logger = structlog.get_logger(__name__)
 
@@ -399,6 +399,7 @@ def monitor_performance(endpoint: str):
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs) -> T:
+            from arkashri.logging_config import performance_logger
             async with performance_logger.log_request_duration(
                 endpoint=endpoint,
                 method=func.__name__
