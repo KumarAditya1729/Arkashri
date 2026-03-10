@@ -37,6 +37,18 @@ async def create_new_engagement(
     return EngagementOut.model_validate(engagement)
 
 
+@router.get("/engagements", response_model=list[EngagementOut])
+async def list_engagements(
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.READ_ONLY, ClientRole.REVIEWER})),
+) -> list[EngagementOut]:
+    """List all engagements for the authenticated tenant."""
+    from sqlalchemy import select as sa_select
+    from arkashri.models import Engagement
+    results = list(await session.scalars(sa_select(Engagement).order_by(Engagement.created_at.desc())))
+    return [EngagementOut.model_validate(e) for e in results]
+
+
 @router.get("/engagements/{engagement_id}", response_model=EngagementOut)
 async def get_engagement_by_id(
     engagement_id: uuid.UUID,

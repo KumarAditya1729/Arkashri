@@ -186,52 +186,6 @@ async def generate_audit_report(
     return ReportOut.model_validate(job)
 
 
-@router.get("/{tenant_id}/{jurisdiction}", response_model=list[ReportOut])
-async def list_reports(
-    tenant_id: str,
-    jurisdiction: str,
-    limit: int = Query(default=20, ge=1, le=100),
-    session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
-) -> list[ReportJob]:
-    stmt = (
-        select(ReportJob)
-        .where(ReportJob.tenant_id == tenant_id, ReportJob.jurisdiction == jurisdiction)
-        .order_by(ReportJob.created_at.desc())
-        .limit(limit)
-    )
-    return list(await session.scalars(stmt))
-
-
-@router.get("/metrics/coverage/{tenant_id}/{jurisdiction}", response_model=CoverageOut)
-async def get_coverage(
-    tenant_id: str,
-    jurisdiction: str,
-    session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
-) -> CoverageOut:
-    tx_recv, dec_comp, rate = await _coverage_counts(session, tenant_id, jurisdiction)
-    return CoverageOut(
-        tenant_id=tenant_id,
-        jurisdiction=jurisdiction,
-        transactions_received=tx_recv,
-        decisions_computed=dec_comp,
-        coverage_rate=rate,
-    )
-
-
-@router.get("/metrics/scorecard/{tenant_id}/{jurisdiction}")
-@cache(expire=60)
-async def get_scorecard(
-    tenant_id: str,
-    jurisdiction: str,
-    session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
-) -> dict[str, Any]:
-    stats = await compute_scorecard(session, tenant_id, jurisdiction)
-    return asdict(stats)
-
-
 # ─── Automation Score ─────────────────────────────────────────────────────────
 
 class AutomationDimension(BaseModel):
@@ -366,3 +320,51 @@ async def get_automation_score(
         computed_at=now_str,
         insight=insight,
     )
+
+
+@router.get("/metrics/coverage/{tenant_id}/{jurisdiction}", response_model=CoverageOut)
+async def get_coverage(
+    tenant_id: str,
+    jurisdiction: str,
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> CoverageOut:
+    tx_recv, dec_comp, rate = await _coverage_counts(session, tenant_id, jurisdiction)
+    return CoverageOut(
+        tenant_id=tenant_id,
+        jurisdiction=jurisdiction,
+        transactions_received=tx_recv,
+        decisions_computed=dec_comp,
+        coverage_rate=rate,
+    )
+
+
+@router.get("/metrics/scorecard/{tenant_id}/{jurisdiction}")
+@cache(expire=60)
+async def get_scorecard(
+    tenant_id: str,
+    jurisdiction: str,
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> dict[str, Any]:
+    stats = await compute_scorecard(session, tenant_id, jurisdiction)
+    return asdict(stats)
+
+
+# ─── Wildcard list route — must be LAST to avoid shadowing /metrics/* paths ────
+
+@router.get("/{tenant_id}/{jurisdiction}", response_model=list[ReportOut])
+async def list_reports(
+    tenant_id: str,
+    jurisdiction: str,
+    limit: int = Query(default=20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> list[ReportJob]:
+    stmt = (
+        select(ReportJob)
+        .where(ReportJob.tenant_id == tenant_id, ReportJob.jurisdiction == jurisdiction)
+        .order_by(ReportJob.created_at.desc())
+        .limit(limit)
+    )
+    return list(await session.scalars(stmt))

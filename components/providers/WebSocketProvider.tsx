@@ -32,7 +32,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
         const tenantId = user.organisation === 'Arkashri Systems' ? 'default_tenant' : user.id
         const jurisdiction = 'IN' // Default to India for now, could be dynamic
-        const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000'}/ws/audit/${tenantId}/${jurisdiction}`
+        const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8001'}/ws/audit/${tenantId}/${jurisdiction}`
 
         console.log(`Connecting to WebSocket: ${wsUrl}`)
         console.log(`User authenticated: ${isAuthenticated}, User ID: ${user.id}`)
