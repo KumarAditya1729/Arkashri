@@ -299,6 +299,21 @@ async def health(db: AsyncSession = Depends(get_session)):
     )
 
 
+@app.get("/readyz", include_in_schema=False)
+async def readyz(db: AsyncSession = Depends(get_session)):
+    """
+    Lightweight readiness probe — returns 200 only when DB is reachable.
+    Used by Railway / Kubernetes to gate traffic during startup.
+    """
+    try:
+        from sqlalchemy import text
+        await db.execute(text("SELECT 1"))
+        return JSONResponse(status_code=200, content={"ready": True, "db": "ok"})
+    except Exception as e:
+        logger.warning("readyz_db_unreachable", error=str(e))
+        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable"})
+
+
 # ── Enhanced Metrics endpoint ───────────────────────────────────────────────
 @app.get("/metrics/detailed", include_in_schema=False)
 async def detailed_metrics():

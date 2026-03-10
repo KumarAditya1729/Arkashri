@@ -1021,6 +1021,7 @@ class SealSignature(Base):
     )
     partner_user_id: Mapped[str] = mapped_column(String(120), nullable=False)
     partner_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    ca_icai_reg_no: Mapped[str | None] = mapped_column(String(40))  # e.g. FCA-123456 — Gap 6 Disclaimer Engine
     role: Mapped[PartnerRole] = mapped_column(
         Enum(PartnerRole, name="partner_role"), nullable=False,
         default=PartnerRole.ENGAGEMENT_PARTNER,

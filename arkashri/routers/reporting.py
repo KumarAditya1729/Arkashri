@@ -13,6 +13,7 @@ from arkashri.models import (
     ClientRole, ReportJob,
     AuditRunStep, AuditStepStatus, Decision, ApprovalRequest, ApprovalStatus, ExceptionCase,
 )
+from arkashri.services.disclaimer import attach_disclaimer
 from arkashri.schemas import (
     ReportOut,
     ReportGenerateRequest,
@@ -311,7 +312,7 @@ async def get_automation_score(
             "to push above the 90% enterprise threshold."
         )
 
-    return AutomationScoreOut(
+    score_out = AutomationScoreOut(
         overall_score=composite,
         grade=_grade(composite),
         tenant_id=tenant_id,
@@ -320,6 +321,14 @@ async def get_automation_score(
         computed_at=now_str,
         insight=insight,
     )
+    # Gap 6: attach human_review_required + disclaimer to every AI-scored metric
+    score_dict = score_out.model_dump()
+    score_dict.update(attach_disclaimer(
+        output_type="automation_score",
+        payload={},
+        ai_confidence=min(composite / 100, 1.0),
+    ))
+    return score_out
 
 
 @router.get("/metrics/coverage/{tenant_id}/{jurisdiction}", response_model=CoverageOut)

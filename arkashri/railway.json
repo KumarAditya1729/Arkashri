@@ -4,7 +4,7 @@
   },
   "deploy": {
     "startCommand": "python -m arkashri.main",
-    "healthcheckPath": "/",
+    "healthcheckPath": "/readyz",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
