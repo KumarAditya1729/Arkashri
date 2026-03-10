@@ -9,11 +9,15 @@ import asyncio
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from pathlib import Path
+import os
 
-from web3 import Web3
-from web3.middleware import ExtraDataToPOAMiddleware
-from substrateinterface import SubstrateInterface, Keypair
 import structlog
+
+_BLOCKCHAIN_ENABLED = os.getenv("ENABLE_BLOCKCHAIN", "false").lower() == "true"
+if _BLOCKCHAIN_ENABLED:
+    from web3 import Web3
+    from web3.middleware import ExtraDataToPOAMiddleware
+    from substrateinterface import SubstrateInterface, Keypair
 
 from arkashri.config import get_settings
 from arkashri.logging_config import blockchain_logger
@@ -32,8 +36,7 @@ class MultiChainBlockchainService:
         
         # Initialize blockchain connections — skip on low-resource envs (ENABLE_BLOCKCHAIN != true)
         self.connections = {}
-        import os
-        if os.getenv("ENABLE_BLOCKCHAIN", "false").lower() == "true":
+        if _BLOCKCHAIN_ENABLED:
             self._initialize_connections()
         else:
             logger.info("blockchain_connections_skipped", reason="ENABLE_BLOCKCHAIN not set")
