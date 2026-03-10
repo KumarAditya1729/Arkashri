@@ -388,3 +388,4 @@ async def direct_websocket(websocket: WebSocket):
 #             raise
 
 # app.add_middleware(StructlogMiddleware)
+# Fixed AsyncSession import issue
