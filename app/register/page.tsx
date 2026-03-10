@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore } from '../../store/authStore'
 import { Eye, EyeOff, Shield, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 const ROLES = [

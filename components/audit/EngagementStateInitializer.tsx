@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { useAuditStore } from '@/store/auditStore'
+import { useAuditStore } from '../../store/auditStore'
 
 interface EngagementStateInitializerProps {
     engagementId: string

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore } from '../../store/authStore'
 
 interface WebSocketContextType {
     isConnected: boolean

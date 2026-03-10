@@ -1,6 +1,6 @@
 'use client'
 
-import { useAuditStore } from '@/store/auditStore'
+import { useAuditStore } from '../../store/auditStore'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ShieldAlert, ArrowRight } from 'lucide-react'

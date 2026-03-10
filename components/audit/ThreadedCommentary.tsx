@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useAuditStore } from '@/store/auditStore'
+import { useAuditStore } from '../../store/auditStore'
 import { Button } from '@/components/ui/button'
 import { MessageSquare, AlertCircle, CheckCircle2 } from 'lucide-react'
 

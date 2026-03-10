@@ -3,9 +3,10 @@
 import { AuditShell } from '@/components/layout/AuditShell'
 import { AutomationScoreWidget } from '@/components/audit/AutomationScoreWidget'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { ArrowRight, Activity, Users, FileWarning, TrendingUp, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { getAutomationScore, AutomationScoreResponse, getEngagements, EngagementResponse } from '@/lib/api'
+import { getAutomationScore, AutomationScoreResponse, getEngagements, EngagementResponse, ApiError } from '@/lib/api'
 
 // Dynamically fetched
 const statusColors: Record<string, string> = {
@@ -47,6 +48,7 @@ export default function Dashboard() {
     const critical = ENGAGEMENTS.filter(e => e.risk === 'Critical').length
     const pending = ENGAGEMENTS.filter(e => e.status === 'Planning' || e.status === 'Not Started').length
 
+    const router = useRouter()
     const [automationData, setAutomationData] = useState<AutomationScoreResponse | null>(null)
     const [scoreLoading, setScoreLoading] = useState(true)
     const [isLiveScore, setIsLiveScore] = useState(false)
@@ -57,6 +59,11 @@ export default function Dashboard() {
                 setAutomationData(data)
                 setIsLiveScore(data.dimensions.some(d => d.total > 0))
             }
+        }).catch(err => {
+            if (err instanceof ApiError && err.status === 401) {
+                router.replace('/sign-in')
+            }
+            // non-auth errors: stay on page with stale overlay
         }).finally(() => setScoreLoading(false))
 
         getEngagements().then(data => {

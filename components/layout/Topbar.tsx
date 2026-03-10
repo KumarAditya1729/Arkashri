@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Bell, Search, LogOut, ChevronDown } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { useAuthStore } from '@/store/authStore'
+import { useAuthStore } from '../../store/authStore'
 import { useState } from 'react'
 
 export function Topbar() {

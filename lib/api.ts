@@ -380,11 +380,8 @@ export async function getAutomationScore(
             `/api/v1/reporting/metrics/automation-score?tenant_id=${tenant}&jurisdiction=${jurisdiction}`
         )
     } catch (err) {
-        // Re-throw auth errors so callers can redirect to sign-in
-        if (err instanceof ApiError && err.status === 401) throw err
-        // Swallow network / 5xx errors — show stale widget instead of crashing
-        console.warn('Backend metrics unreachable. Showing stale model.', err)
-        return null
+        console.warn('Backend metrics unreachable. UI should handle stale state.', err)
+        return null // Return null to allow UI to show stale vs live status
     }
 }
 
