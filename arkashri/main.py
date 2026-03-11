@@ -325,18 +325,23 @@ async def readyz():
         from sqlalchemy import text
         from arkashri.config import get_settings
         settings = get_settings()
-        db_host = settings.database_url.split("@")[-1].split(":")[0] if "@" in settings.database_url else "unknown"
-
+        raw_url = settings.database_url
+        if "@" in raw_url:
+            masked_url = raw_url.split(":")[0] + "://***:***@" + raw_url.split("@")[-1]
+        else:
+            masked_url = raw_url[:10] + "...(no @ found)"
+            
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
-            return JSONResponse(status_code=200, content={"ready": True, "db": "ok", "host": db_host})
+            return JSONResponse(status_code=200, content={"ready": True, "db": "ok", "url": masked_url})
     except Exception as e:
         import traceback
         from arkashri.config import get_settings
         settings = get_settings()
-        db_host = settings.database_url.split("@")[-1].split(":")[0] if "@" in settings.database_url else "unknown"
+        raw_url = settings.database_url
+        masked_url = raw_url.split(":")[0] + "://***:***@" + raw_url.split("@")[-1] if "@" in raw_url else raw_url[:15] + "...(no @)"
         logger.warning("readyz_db_unreachable", error=str(e))
-        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable", "detail": str(e), "host": db_host, "trace": traceback.format_exc()})
+        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable", "detail": str(e), "url": masked_url, "trace": traceback.format_exc()})
 
 
 # ── Enhanced Metrics endpoint ───────────────────────────────────────────────
