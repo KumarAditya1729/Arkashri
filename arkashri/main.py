@@ -315,18 +315,21 @@ async def health(db: AsyncSession = Depends(get_session)):
 
 
 @app.get("/readyz", include_in_schema=False)
-async def readyz(db: AsyncSession = Depends(get_session)):
+async def readyz():
     """
     Lightweight readiness probe — returns 200 only when DB is reachable.
     Used by Railway / Kubernetes to gate traffic during startup.
     """
     try:
+        from arkashri.db import AsyncSessionLocal
         from sqlalchemy import text
-        await db.execute(text("SELECT 1"))
-        return JSONResponse(status_code=200, content={"ready": True, "db": "ok"})
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+            return JSONResponse(status_code=200, content={"ready": True, "db": "ok"})
     except Exception as e:
+        import traceback
         logger.warning("readyz_db_unreachable", error=str(e))
-        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable"})
+        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable", "detail": str(e), "trace": traceback.format_exc()})
 
 
 # ── Enhanced Metrics endpoint ───────────────────────────────────────────────
