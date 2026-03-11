@@ -323,13 +323,20 @@ async def readyz():
     try:
         from arkashri.db import AsyncSessionLocal
         from sqlalchemy import text
+        from arkashri.config import get_settings
+        settings = get_settings()
+        db_host = settings.database_url.split("@")[-1].split(":")[0] if "@" in settings.database_url else "unknown"
+
         async with AsyncSessionLocal() as db:
             await db.execute(text("SELECT 1"))
-            return JSONResponse(status_code=200, content={"ready": True, "db": "ok"})
+            return JSONResponse(status_code=200, content={"ready": True, "db": "ok", "host": db_host})
     except Exception as e:
         import traceback
+        from arkashri.config import get_settings
+        settings = get_settings()
+        db_host = settings.database_url.split("@")[-1].split(":")[0] if "@" in settings.database_url else "unknown"
         logger.warning("readyz_db_unreachable", error=str(e))
-        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable", "detail": str(e), "trace": traceback.format_exc()})
+        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable", "detail": str(e), "host": db_host, "trace": traceback.format_exc()})
 
 
 # ── Enhanced Metrics endpoint ───────────────────────────────────────────────
