@@ -25,19 +25,19 @@ TENANT   = "default_tenant"
 
 ENGAGEMENTS = [
     {"shortId": "1092", "client_name": "Acme Corp",           "engagement_type": "forensic",     "jurisdiction": "IN"},
-    {"shortId": "8841", "client_name": "Globex Inc",          "engagement_type": "financial",    "jurisdiction": "IN"},
-    {"shortId": "3329", "client_name": "Hooli",               "engagement_type": "esg",          "jurisdiction": "IN"},
-    {"shortId": "2201", "client_name": "Initech",             "engagement_type": "internal",     "jurisdiction": "IN"},
+    {"shortId": "8841", "client_name": "Globex Inc",          "engagement_type": "financial",    "jurisdiction": "US"},
+    {"shortId": "3329", "client_name": "Hooli",               "engagement_type": "esg",          "jurisdiction": "IFRS"},
+    {"shortId": "2201", "client_name": "Initech",             "engagement_type": "internal",     "jurisdiction": "UK"},
     {"shortId": "4412", "client_name": "Umbrella Corp",       "engagement_type": "external",     "jurisdiction": "IN"},
-    {"shortId": "5503", "client_name": "Stark Industries",    "engagement_type": "statutory",    "jurisdiction": "IN"},
-    {"shortId": "6614", "client_name": "Wayne Enterprises",   "engagement_type": "tax",          "jurisdiction": "IN"},
-    {"shortId": "7725", "client_name": "Cyberdyne Systems",   "engagement_type": "compliance",   "jurisdiction": "IN"},
+    {"shortId": "5503", "client_name": "Stark Industries",    "engagement_type": "statutory",    "jurisdiction": "US"},
+    {"shortId": "6614", "client_name": "Wayne Enterprises",   "engagement_type": "tax",          "jurisdiction": "IFRS"},
+    {"shortId": "7725", "client_name": "Cyberdyne Systems",   "engagement_type": "compliance",   "jurisdiction": "UK"},
     {"shortId": "8836", "client_name": "Oscorp Industries",   "engagement_type": "operational",  "jurisdiction": "IN"},
-    {"shortId": "9947", "client_name": "Massive Dynamic",     "engagement_type": "it",           "jurisdiction": "IN"},
-    {"shortId": "1058", "client_name": "Pied Piper",          "engagement_type": "payroll",      "jurisdiction": "IN"},
-    {"shortId": "2169", "client_name": "Dunder Mifflin",      "engagement_type": "performance",  "jurisdiction": "IN"},
+    {"shortId": "9947", "client_name": "Massive Dynamic",     "engagement_type": "it",           "jurisdiction": "US"},
+    {"shortId": "1058", "client_name": "Pied Piper",          "engagement_type": "payroll",      "jurisdiction": "IFRS"},
+    {"shortId": "2169", "client_name": "Dunder Mifflin",      "engagement_type": "performance",  "jurisdiction": "UK"},
     {"shortId": "3270", "client_name": "Vandelay Industries", "engagement_type": "quality",      "jurisdiction": "IN"},
-    {"shortId": "4381", "client_name": "Soylent Corp",        "engagement_type": "environmental","jurisdiction": "IN"},
+    {"shortId": "4381", "client_name": "Soylent Corp",        "engagement_type": "environmental","jurisdiction": "US"},
 ]
 
 

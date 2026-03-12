@@ -57,6 +57,7 @@ class SignRequest(BaseModel):
     jurisdiction: str    = Field(default="IN")
     override_count_acknowledged: int  = Field(default=0, ge=0)
     override_ack_confirmed: bool       = Field(default=False, description="Partner confirmed they reviewed all AI overrides")
+    ca_icai_reg_no: str | None = Field(default=None, description="Partner's ICAI Registration Number (FCA/ACA-XXXXXX)")
 
 
 class WithdrawRequest(BaseModel):
@@ -74,6 +75,7 @@ class SealSignatureOut(BaseModel):
     signature_hash: str
     signed_at: str
     withdrawn_at: str | None
+    ca_icai_reg_no: str | None
 
     model_config = {"from_attributes": True}
 
@@ -368,6 +370,13 @@ async def sign_seal_session(
             "This is a PCAOB professional skepticism requirement."
         )
 
+    if payload.jurisdiction == "IN":
+        if not payload.ca_icai_reg_no:
+            raise HTTPException(422, "ICAI Registration Number is required for Indian jurisdictions. Please provide ca_icai_reg_no.")
+        from arkashri.services.disclaimer import validate_icai_reg_no
+        if not validate_icai_reg_no(payload.ca_icai_reg_no):
+            raise HTTPException(422, "Invalid ICAI Registration Number format. Must be FCA/ACA-XXXXXX or F/A-XXXXXX.")
+
     now = datetime.datetime.now(datetime.UTC)
     sig_hash = _compute_signature_hash(session_id, payload.partner_user_id, now)
 
@@ -379,6 +388,7 @@ async def sign_seal_session(
         jurisdiction=payload.jurisdiction,
         override_count_acknowledged=override_count,
         override_ack_confirmed=payload.override_ack_confirmed,
+        ca_icai_reg_no=payload.ca_icai_reg_no,
         signature_hash=sig_hash,
         signed_at=now,
     )

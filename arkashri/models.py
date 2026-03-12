@@ -92,6 +92,7 @@ class User(Base):
         Enum(UserRole, name="user_role"), nullable=False, default=UserRole.REVIEWER
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    icai_reg_no: Mapped[str | None] = mapped_column(String(20))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -180,6 +181,13 @@ class FrameworkType(str, enum.Enum):
     PCAOB = "PCAOB"
     ISA = "ISA"
     OTHER = "OTHER"
+
+
+class StandardsFramework(str, enum.Enum):
+    ICAI_SA = "ICAI_SA"      # India (Default)
+    PCAOB_AS = "PCAOB_AS"    # US GAAP
+    ISA = "ISA"              # IFRS / International
+    FRC_ISA = "FRC_ISA"      # UK GAAP
 
 
 class PolicyEnforcementAction(str, enum.Enum):
@@ -893,6 +901,9 @@ class Engagement(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[str] = mapped_column(String(100), nullable=False)
     jurisdiction: Mapped[str] = mapped_column(String(20), nullable=False)
+    standards_framework: Mapped[StandardsFramework] = mapped_column(
+        Enum(StandardsFramework, name="standards_framework"), nullable=False, default=StandardsFramework.ICAI_SA
+    )
     client_name: Mapped[str] = mapped_column(String(255), nullable=False)
     engagement_type: Mapped[EngagementType] = mapped_column(
         Enum(EngagementType, name="engagement_type", values_callable=lambda x: [e.value for e in x]), nullable=False, default=EngagementType.STATUTORY_AUDIT
@@ -1371,3 +1382,115 @@ class SystemAuditLog(Base):
     user_agent: Mapped[str | None] = mapped_column(Text)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+# ─── Gap 7: Standards Update Pipeline Models ──────────────────────────────────
+
+class RegulatoryUpdateStatus(str, enum.Enum):
+    NEW = "NEW"
+    ACKNOWLEDGED = "ACKNOWLEDGED"
+    APPLIED = "APPLIED"
+
+
+class RegulatoryUpdate(Base):
+    __tablename__ = "regulatory_update"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source: Mapped[str] = mapped_column(String(50), nullable=False) # ICAI, SEBI, MCA
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    effective_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version_tag: Mapped[str | None] = mapped_column(String(50))
+    summary: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[RegulatoryUpdateStatus] = mapped_column(
+        Enum(RegulatoryUpdateStatus, name="regulatory_update_status"), nullable=False, default=RegulatoryUpdateStatus.NEW
+    )
+    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RulesSnapshot(Base):
+    __tablename__ = "rules_snapshot"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("engagement.id", ondelete="CASCADE"), nullable=False
+    )
+    snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    sa_versions: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    engagement: Mapped[Engagement] = relationship()
+
+
+# ─── Gap 1: Regulatory Standing (SA Compliance Checklist) ─────────────────────
+
+class SAChecklistStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    COMPLIANT = "COMPLIANT"
+    NON_COMPLIANT = "NON_COMPLIANT"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+class SAChecklistItem(Base):
+    __tablename__ = "sa_checklist_item"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("engagement.id", ondelete="CASCADE"), nullable=False
+    )
+    standard_ref: Mapped[str] = mapped_column(String(50), nullable=False) # e.g. "SA 200"
+    requirement: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[SAChecklistStatus] = mapped_column(
+        Enum(SAChecklistStatus, name="sa_checklist_status"), nullable=False, default=SAChecklistStatus.PENDING
+    )
+    verified_by: Mapped[str | None] = mapped_column(String(120))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    
+    engagement: Mapped[Engagement] = relationship()
+
+
+# ─── Gap 2: Human Judgment Layer ──────────────────────────────────────────────
+
+class JudgmentStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    SIGNED = "SIGNED"
+
+
+class ProfessionalJudgment(Base):
+    __tablename__ = "professional_judgment"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("engagement.id", ondelete="CASCADE"), nullable=False
+    )
+    area: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. "Going Concern", "Fair Value", "RPT"
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    ai_confidence: Mapped[float] = mapped_column(Float, nullable=False) # 0.0 - 100.0
+    status: Mapped[JudgmentStatus] = mapped_column(
+        Enum(JudgmentStatus, name="judgment_status"), nullable=False, default=JudgmentStatus.PENDING
+    )
+    signed_by: Mapped[str | None] = mapped_column(String(255))
+    icai_reg_no: Mapped[str | None] = mapped_column(String(20))
+    signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    
+    engagement: Mapped[Engagement] = relationship()
+
+
+# ─── Gap 3: Client Relationships (Client Portal) ──────────────────────────────
+
+class ClientPortalAccess(Base):
+    __tablename__ = "client_portal_access"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("engagement.id", ondelete="CASCADE"), nullable=False
+    )
+    client_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_accessed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    
+    engagement: Mapped[Engagement] = relationship()

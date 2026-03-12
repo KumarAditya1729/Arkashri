@@ -161,3 +161,39 @@ async def run_regulatory_feeds_now(
         "new_items_by_source": results,
         "total_new": total_new,
     }
+
+
+@router.get("/updates/diff/{doc_id_1}/{doc_id_2}", summary="Diff two regulatory documents")
+async def diff_regulatory_documents(
+    doc_id_1: int,
+    doc_id_2: int,
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> dict:
+    """
+    Returns a unified diff of the content text of two regulatory documents.
+    Used to highlight exact rule changes between a previous and current standard.
+    """
+    import difflib
+    doc1 = await session.scalar(select(RegulatoryDocument).where(RegulatoryDocument.id == doc_id_1))
+    doc2 = await session.scalar(select(RegulatoryDocument).where(RegulatoryDocument.id == doc_id_2))
+    
+    if not doc1 or not doc2:
+        raise HTTPException(status_code=404, detail="One or both documents not found")
+        
+    text1 = doc1.content_text.splitlines()
+    text2 = doc2.content_text.splitlines()
+    
+    diff = list(difflib.unified_diff(
+        text1, text2, 
+        fromfile=f"v{doc1.id}", tofile=f"v{doc2.id}", 
+        lineterm=""
+    ))
+    
+    return {
+        "doc1_id": doc1.id,
+        "doc2_id": doc2.id,
+        "diff_lines": diff,
+        "diff_text": "\n".join(diff)
+    }
+

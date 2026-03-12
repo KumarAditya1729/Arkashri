@@ -44,11 +44,15 @@ async def create_engagement(session: AsyncSession, payload: EngagementCreate) ->
             independence_cleared = False
             conflict_notes = "Automatically flagged: Entity on restricted list."
 
+    from arkashri.services.jurisdiction_standards import get_standards_for_jurisdiction
+    standards_info = get_standards_for_jurisdiction(payload.jurisdiction)
+    
     status = EngagementStatus.ACCEPTED if (independence_cleared and kyc_cleared) else EngagementStatus.REJECTED
 
     engagement = Engagement(
         tenant_id=payload.tenant_id,
         jurisdiction=payload.jurisdiction,
+        standards_framework=standards_info["framework"],
         client_name=payload.client_name,
         engagement_type=payload.engagement_type,
         status=status,
@@ -59,6 +63,34 @@ async def create_engagement(session: AsyncSession, payload: EngagementCreate) ->
     session.add(engagement)
     await session.commit()
     await session.refresh(engagement)
+
+    # Automatically capture the active regulatory ruleset (RulesSnapshot)
+    from arkashri.models import RulesSnapshot, RegulatoryDocument
+    import hashlib
+    import json
+    from sqlalchemy import select
+
+    docs = await session.scalars(
+        select(RegulatoryDocument)
+        .where(RegulatoryDocument.jurisdiction == payload.jurisdiction)
+        .where(RegulatoryDocument.is_promoted == True)
+    )
+    
+    sa_versions = {}
+    for doc in docs:
+        key = f"{doc.authority}:{doc.external_id}"
+        sa_versions[key] = doc.content_hash
+
+    snapshot_hash = hashlib.sha256(json.dumps(sa_versions, sort_keys=True).encode()).hexdigest()
+
+    snapshot = RulesSnapshot(
+        engagement_id=engagement.id,
+        snapshot_hash=snapshot_hash,
+        sa_versions=sa_versions,
+    )
+    session.add(snapshot)
+    await session.commit()
+
     return engagement
 
 

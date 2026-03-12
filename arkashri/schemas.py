@@ -24,6 +24,7 @@ from arkashri.models import (
     ReportStatus,
     SignalType,
     FrameworkType,
+    StandardsFramework,
     PolicyEnforcementAction,
     CrisisTriggerType,
     CrisisStatus,
@@ -657,6 +658,7 @@ class EngagementOut(BaseModel):
     id: uuid.UUID
     tenant_id: str
     jurisdiction: str
+    standards_framework: StandardsFramework
     client_name: str
     engagement_type: EngagementType
     status: EngagementStatus

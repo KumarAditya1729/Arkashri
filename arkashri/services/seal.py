@@ -367,6 +367,40 @@ async def generate_audit_seal(session: AsyncSession, engagement_id: uuid.UUID) -
             f"Session status: {seal_session.status.value}."
         )
 
+    # ── 2.2 Check Human Judgments ─────────────────────────────────────────────
+    from arkashri.services.judgment import check_judgments_complete
+    if not await check_judgments_complete(session, engagement_id):
+        raise ValueError(
+            "Cannot seal: Missing mandatory professional judgments. "
+            "Certain complex estimates or high-risk AI decisions have been flagged "
+            "as requiring explicit CA sign-off. Please review and sign them in the Judgment tab."
+        )
+
+    # ── 2.5 Check Regulatory Drift ────────────────────────────────────────────
+    from arkashri.models import RulesSnapshot, RegulatoryDocument
+    import json
+
+    snapshot = (await session.scalars(
+        select(RulesSnapshot).where(RulesSnapshot.engagement_id == engagement_id)
+    )).first()
+
+    if snapshot:
+        docs = await session.scalars(
+            select(RegulatoryDocument)
+            .where(RegulatoryDocument.jurisdiction == engagement.jurisdiction)
+            .where(RegulatoryDocument.is_promoted == True)
+        )
+        current_versions = {}
+        for doc in docs:
+            current_versions[f"{doc.authority}:{doc.external_id}"] = doc.content_hash
+
+        current_hash = hashlib.sha256(json.dumps(current_versions, sort_keys=True).encode()).hexdigest()
+        if current_hash != snapshot.snapshot_hash:
+            raise ValueError(
+                "Cannot seal: Regulatory standards have changed since this engagement was created. "
+                "The audit must be reviewed against the updated rules before sealing can occur."
+            )
+
     # ── 3. Fetch Opinion ──────────────────────────────────────────────────────
     final_opinion = (await session.scalars(
         select(AuditOpinion)
