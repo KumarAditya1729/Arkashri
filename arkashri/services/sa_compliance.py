@@ -10,8 +10,7 @@ from arkashri.models import (
     Engagement, 
     SAChecklistItem, 
     SAChecklistStatus,
-    AuditOpinion,
-    EvidenceNode
+    AuditOpinion
 )
 
 SA_REQUIREMENTS = [
