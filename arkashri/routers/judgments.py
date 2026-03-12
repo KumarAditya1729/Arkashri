@@ -6,8 +6,8 @@ from sqlalchemy import select
 from pydantic import BaseModel
 
 from arkashri.dependencies import get_session, require_api_client
-from arkashri.auth.jwt import AuthContext, ClientRole
-from arkashri.models import ProfessionalJudgment, JudgmentStatus, Engagement, User
+from arkashri.dependencies import AuthContext
+from arkashri.models import ProfessionalJudgment, JudgmentStatus, Engagement, User, ClientRole
 
 router = APIRouter(prefix="/v1/judgments", tags=["Human Judgment"])
 
