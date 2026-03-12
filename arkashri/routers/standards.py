@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from arkashri.dependencies import get_session, require_api_client
 from arkashri.dependencies import AuthContext, require_api_client
-from arkashri.models import SAChecklistItem, Engagement, EngagementStatus
+from arkashri.models import SAChecklistItem, Engagement, EngagementStatus, ClientRole
 from arkashri.services.sa_compliance import generate_sa_checklist, generate_nfra_package
 
 router = APIRouter(prefix="/v1/standards", tags=["Regulatory Standards"])
