@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from arkashri.dependencies import get_session, require_api_client
-from arkashri.auth.jwt import AuthContext, ClientRole
+from arkashri.dependencies import AuthContext, require_api_client
 from arkashri.models import SAChecklistItem, Engagement, EngagementStatus
 from arkashri.services.sa_compliance import generate_sa_checklist, generate_nfra_package
 
