@@ -93,6 +93,7 @@ pyasn1==0.6.2
 pycparser==3.0
 pycryptodome==3.23.0
 pydantic==2.12.5
+email-validator>=2.0.0
 pydantic-settings==2.13.1
 pydantic_core==2.41.5
 pydyf==0.12.1
