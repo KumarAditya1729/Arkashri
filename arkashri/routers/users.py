@@ -39,23 +39,20 @@ class RegisterRequest(BaseModel):
     role:         str = "OPERATOR"   # default: full audit operator
 
 
-class RegisterResponse(BaseModel):
-    access_token:  str
-    refresh_token: str
-    token_type:    str = "bearer"
-    user: dict
+
 
 
 @router.post(
     "/register",
-    response_model=RegisterResponse,
+    response_model=None,
     status_code=status.HTTP_201_CREATED,
     summary="Public self-registration — creates a new platform user and returns a JWT",
 )
 async def register_user(
     payload: RegisterRequest,
     db: AsyncSession = Depends(get_session),
-) -> RegisterResponse:
+):
+    from fastapi.responses import JSONResponse
     from arkashri.services.jwt_service import create_access_token, create_refresh_token
 
     email = payload.email.strip().lower()
@@ -102,12 +99,16 @@ async def register_user(
     )
     refresh_token = create_refresh_token(sub=str(user.id), user_id=str(user.id), tenant_id=user.tenant_id)
 
-    return RegisterResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        user={
-            "id": str(user.id), "email": user.email, "full_name": user.full_name,
-            "role": user.role.value, "tenant_id": user.tenant_id, "initials": user.initials,
+    return JSONResponse(
+        status_code=201,
+        content={
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": {
+                "id": str(user.id), "email": user.email, "full_name": user.full_name,
+                "role": user.role.value, "tenant_id": user.tenant_id, "initials": user.initials,
+            },
         },
     )
 
