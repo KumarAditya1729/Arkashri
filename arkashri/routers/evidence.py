@@ -3,6 +3,7 @@
 Evidence router — real multipart file upload to LocalStorageBackend,
 with a DB record table for auditability.
 """
+from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone

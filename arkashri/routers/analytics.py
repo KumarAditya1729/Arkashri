@@ -3,6 +3,7 @@
 ML Analytics API endpoints
 Provides AI-powered insights and predictive analytics
 """
+from __future__ import annotations
 
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks

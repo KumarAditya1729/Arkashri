@@ -1,4 +1,5 @@
 # pyre-ignore-all-errors
+from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select

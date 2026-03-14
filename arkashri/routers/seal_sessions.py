@@ -14,6 +14,7 @@ Gate logic:
   - First signature freezes the opinion snapshot
   - Withdrawal resets session to PENDING and logs reason
 """
+from __future__ import annotations
 
 import hashlib
 import uuid

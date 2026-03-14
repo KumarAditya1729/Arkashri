@@ -1,4 +1,5 @@
 # pyre-ignore-all-errors
+from __future__ import annotations
 
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
