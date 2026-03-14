@@ -8,13 +8,13 @@ from pydantic import BaseModel, EmailStr
 
 from arkashri.dependencies import get_session, require_api_client, AuthContext
 
-from arkashri.models import
+from arkashri.models import (
     Engagement, 
     ClientPortalAccess, 
     AuditRun, 
     AuditRunStep, 
     ProfessionalJudgment,
-    ClientRole
+    ClientRole,
 )
 
 router = APIRouter(prefix="/v1/portal", tags=["Client Portal"])
