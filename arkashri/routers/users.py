@@ -29,7 +29,89 @@ from arkashri.dependencies import require_api_client, AuthContext
 router = APIRouter()
 
 
-# ─── Schemas ──────────────────────────────────────────────────────────────────
+# ─── POST /auth/register — Public Self-Registration ──────────────────────────
+
+class RegisterRequest(BaseModel):
+    email:        str = Field(..., min_length=3)
+    password:     str = Field(..., min_length=8)
+    full_name:    str = Field(..., min_length=1, max_length=255)
+    organisation: str | None = None
+    role:         str = "OPERATOR"   # default: full audit operator
+
+
+class RegisterResponse(BaseModel):
+    access_token:  str
+    refresh_token: str
+    token_type:    str = "bearer"
+    user: dict
+
+
+@router.post(
+    "/register",
+    response_model=RegisterResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Public self-registration — creates a new platform user and returns a JWT",
+)
+async def register_user(
+    payload: RegisterRequest,
+    db: AsyncSession = Depends(get_session),
+) -> RegisterResponse:
+    from arkashri.services.jwt_service import create_access_token, create_refresh_token
+
+    email = payload.email.strip().lower()
+    tenant_id = "default_tenant"   # all self-registered users land in default tenant
+
+    # Check uniqueness
+    existing = (await db.scalars(select(User).where(User.email == email))).first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Email {payload.email} is already registered.")
+
+    # Map incoming role string to nearest UserRole
+    role_map = {
+        "admin": UserRole.ADMIN,
+        "operator": UserRole.OPERATOR,
+        "auditor": UserRole.OPERATOR,
+        "reviewer": UserRole.REVIEWER,
+        "read_only": UserRole.READ_ONLY,
+        "ADMIN": UserRole.ADMIN,
+        "OPERATOR": UserRole.OPERATOR,
+        "REVIEWER": UserRole.REVIEWER,
+        "READ_ONLY": UserRole.READ_ONLY,
+    }
+    db_role = role_map.get(payload.role, UserRole.OPERATOR)
+
+    initials = "".join(w[0] for w in payload.full_name.split() if w).upper()[:10] or "AU"
+
+    user = User(
+        tenant_id=tenant_id,
+        email=email,
+        hashed_password=hash_password(payload.password),
+        full_name=payload.full_name,
+        initials=initials,
+        role=db_role,
+        is_active=True,
+        created_by="self-registration",
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    access_token = create_access_token(
+        sub=str(user.id), email=user.email, role=user.role.value,
+        tenant_id=user.tenant_id, full_name=user.full_name, initials=user.initials, user_id=str(user.id),
+    )
+    refresh_token = create_refresh_token(sub=str(user.id), user_id=str(user.id), tenant_id=user.tenant_id)
+
+    return RegisterResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user={
+            "id": str(user.id), "email": user.email, "full_name": user.full_name,
+            "role": user.role.value, "tenant_id": user.tenant_id, "initials": user.initials,
+        },
+    )
+
+
 
 class CreateUserRequest(BaseModel):
     email:     str = Field(..., min_length=3)
