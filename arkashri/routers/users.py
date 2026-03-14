@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 routers/users.py — User Management API
 =======================================

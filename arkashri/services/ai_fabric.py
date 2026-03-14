@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 import json
 import structlog
 from circuitbreaker import circuit, CircuitBreakerError

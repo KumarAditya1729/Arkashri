@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 services/seal_verify.py — Arkashri Seal Verification Service
 =============================================================

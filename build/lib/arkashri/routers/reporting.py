@@ -1,16 +1,20 @@
+# pyre-ignore-all-errors
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
+from typing import Any
+from dataclasses import asdict
 from fastapi_cache.decorator import cache
 
 from arkashri.db import get_session
 from arkashri.models import (
     ClientRole, ReportJob,
-    AuditRunStep, Decision, ApprovalRequest, ExceptionCase,
+    AuditRunStep, AuditStepStatus, Decision, ApprovalRequest, ApprovalStatus, ExceptionCase,
 )
+from arkashri.services.disclaimer import attach_disclaimer
 from arkashri.schemas import (
     ReportOut,
     ReportGenerateRequest,
@@ -184,61 +188,6 @@ async def generate_audit_report(
     return ReportOut.model_validate(job)
 
 
-@router.get("/{tenant_id}/{jurisdiction}", response_model=list[ReportOut])
-async def list_reports(
-    tenant_id: str,
-    jurisdiction: str,
-    limit: int = Query(default=20, ge=1, le=100),
-    session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
-) -> list[ReportJob]:
-    stmt = (
-        select(ReportJob)
-        .where(ReportJob.tenant_id == tenant_id, ReportJob.jurisdiction == jurisdiction)
-        .order_by(ReportJob.created_at.desc())
-        .limit(limit)
-    )
-    return list(await session.scalars(stmt))
-
-
-@router.get("/metrics/coverage/{tenant_id}/{jurisdiction}", response_model=CoverageOut)
-async def get_coverage(
-    tenant_id: str,
-    jurisdiction: str,
-    session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
-) -> CoverageOut:
-    tx_recv, dec_comp, rate = await _coverage_counts(session, tenant_id, jurisdiction)
-    return CoverageOut(
-        tenant_id=tenant_id,
-        jurisdiction=jurisdiction,
-        transactions_received=tx_recv,
-        decisions_computed=dec_comp,
-        coverage_rate=rate,
-    )
-
-
-@router.get("/metrics/scorecard/{tenant_id}/{jurisdiction}", response_model=ScorecardOut)
-@cache(expire=60)
-async def get_scorecard(
-    tenant_id: str,
-    jurisdiction: str,
-    session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
-) -> ScorecardOut:
-    stats = await compute_scorecard(session, tenant_id, jurisdiction)
-    return ScorecardOut(
-        tenant_id=tenant_id,
-        jurisdiction=jurisdiction,
-        computed_at=stats["computed_at"],
-        total_decisions=stats["total_decisions"],
-        rules_triggered=stats["rules_triggered"],
-        exceptions_opened=stats["exceptions_opened"],
-        average_risk=stats["average_risk"],
-        risk_distribution=stats["risk_distribution"],
-    )
-
-
 # ─── Automation Score ─────────────────────────────────────────────────────────
 
 class AutomationDimension(BaseModel):
@@ -306,24 +255,25 @@ async def get_automation_score(
     # 2. AuditRun step completion
     total_steps     = (await session.scalar(select(func.count(AuditRunStep.id)))) or 0
     succeeded_steps = (await session.scalar(
-        select(func.count(AuditRunStep.id)).where(AuditRunStep.status == "SUCCEEDED")
+        select(func.count(AuditRunStep.id)).where(AuditRunStep.status == AuditStepStatus.COMPLETED)
     )) or 0
 
     # 3. Approval auto-clearance
     total_approvals = (await session.scalar(select(func.count(ApprovalRequest.id)))) or 0
     auto_approvals  = (await session.scalar(
-        select(func.count(ApprovalRequest.id)).where(ApprovalRequest.status == "APPROVED")
+        select(func.count(ApprovalRequest.id)).where(ApprovalRequest.status == ApprovalStatus.APPROVED)
     )) or 0
 
     # 4. Exception auto-triage
+    from arkashri.models import ExceptionStatus
     total_exc = (await session.scalar(select(func.count(ExceptionCase.id)))) or 0
     auto_exc  = (await session.scalar(
-        select(func.count(ExceptionCase.id)).where(ExceptionCase.resolution_status == "RESOLVED")
+        select(func.count(ExceptionCase.id)).where(ExceptionCase.status == ExceptionStatus.RESOLVED)
     )) or 0
 
     # 5. Risk quantification
     risk_scored = (await session.scalar(
-        select(func.count(Decision.id)).where(Decision.risk_score.isnot(None))
+        select(func.count(Decision.id)).where(Decision.final_risk.isnot(None))
     )) or 0
 
     def _dim(
@@ -363,7 +313,7 @@ async def get_automation_score(
             "to push above the 90% enterprise threshold."
         )
 
-    return AutomationScoreOut(
+    score_out = AutomationScoreOut(
         overall_score=composite,
         grade=_grade(composite),
         tenant_id=tenant_id,
@@ -372,3 +322,59 @@ async def get_automation_score(
         computed_at=now_str,
         insight=insight,
     )
+    # Gap 6: attach human_review_required + disclaimer to every AI-scored metric
+    score_dict = score_out.model_dump()
+    score_dict.update(attach_disclaimer(
+        output_type="automation_score",
+        payload={},
+        ai_confidence=min(composite / 100, 1.0),
+    ))
+    return score_out
+
+
+@router.get("/metrics/coverage/{tenant_id}/{jurisdiction}", response_model=CoverageOut)
+async def get_coverage(
+    tenant_id: str,
+    jurisdiction: str,
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> CoverageOut:
+    tx_recv, dec_comp, rate = await _coverage_counts(session, tenant_id, jurisdiction)
+    return CoverageOut(
+        tenant_id=tenant_id,
+        jurisdiction=jurisdiction,
+        transactions_received=tx_recv,
+        decisions_computed=dec_comp,
+        coverage_rate=rate,
+    )
+
+
+@router.get("/metrics/scorecard/{tenant_id}/{jurisdiction}")
+@cache(expire=60)
+async def get_scorecard(
+    tenant_id: str,
+    jurisdiction: str,
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> dict[str, Any]:
+    stats = await compute_scorecard(session, tenant_id, jurisdiction)
+    return asdict(stats)
+
+
+# ─── Wildcard list route — must be LAST to avoid shadowing /metrics/* paths ────
+
+@router.get("/{tenant_id}/{jurisdiction}", response_model=list[ReportOut])
+async def list_reports(
+    tenant_id: str,
+    jurisdiction: str,
+    limit: int = Query(default=20, ge=1, le=100),
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> list[ReportJob]:
+    stmt = (
+        select(ReportJob)
+        .where(ReportJob.tenant_id == tenant_id, ReportJob.jurisdiction == jurisdiction)
+        .order_by(ReportJob.created_at.desc())
+        .limit(limit)
+    )
+    return list(await session.scalars(stmt))

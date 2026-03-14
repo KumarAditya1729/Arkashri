@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from datetime import timezone
 
 from arkashri.models import RegulatorySource, RegulatorySourceType

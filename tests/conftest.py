@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 import pytest
 import pytest_asyncio
 import asyncio

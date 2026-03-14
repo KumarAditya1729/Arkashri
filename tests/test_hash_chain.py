@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from arkashri.services.hash_chain import ZERO_HASH, compute_event_hash
 
 

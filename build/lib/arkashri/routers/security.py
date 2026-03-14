@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -25,9 +26,9 @@ async def bootstrap_admin_key(
     from arkashri.config import get_settings
     settings = get_settings()
 
-    if not settings.bootstrap_token:
+    if not settings.bootstrap_admin_token:
         raise HTTPException(status_code=403, detail="Bootstrap disabled (token not configured)")
-    if bootstrap_token != settings.bootstrap_token:
+    if bootstrap_token != settings.bootstrap_admin_token:
         raise HTTPException(status_code=401, detail="Invalid bootstrap token")
 
     client, raw_key = await create_api_client_key(session, name=payload.name, role=ClientRole.ADMIN)

@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """regulatory ingestion sources and documents
 
 Revision ID: 20260224_0005

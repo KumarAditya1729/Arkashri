@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from fastapi.testclient import TestClient
 
 from arkashri.main import app

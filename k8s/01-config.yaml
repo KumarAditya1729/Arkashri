@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arkashri
+---
+# ConfigMap for non-secret environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: arkashri-config
+  namespace: arkashri
+data:
+  AUTH_ENFORCED: "true"
+  JWT_ALGORITHM: "HS256"
+  JWT_EXPIRY_MINUTES: "60"
+  ENABLE_PRODUCTION_MONITORING: "true"
+  POLKADOT_ENABLED: "true"
+  API_REPLICAS: "3"
+  DB_POOL_SIZE: "20"
+  ENABLE_READ_REPLICA: "true"
+---
+# Secret for sensitive data (In production, use AWS Secrets Manager or HashiCorp Vault)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: arkashri-secrets
+  namespace: arkashri
+type: Opaque
+stringData:
+  # Base64 encode these in a real environment, stringData handles it for us here
+  DATABASE_URL: "postgresql+asyncpg://user:password@rds-cluster.us-east-1.rds.amazonaws.com/arkashri"
+  JWT_SECRET_KEY: "replace-with-secure-random-string"
+  REDIS_URL: "redis://elasticache-cluster.us-east-1.amazonaws.com:6379"
+  OPENAI_API_KEY: "sk-proj-replace-with-real-key"
+  AWS_ACCESS_KEY_ID: "replace-with-real-key"
+  AWS_SECRET_ACCESS_KEY: "replace-with-real-key"
+  SEAL_KEY_V1: "replace-with-real-key"

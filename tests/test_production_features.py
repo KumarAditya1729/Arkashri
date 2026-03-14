@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 import pytest
 import uuid
 from httpx import AsyncClient

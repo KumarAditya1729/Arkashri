@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 import pytest
 from arkashri.services.risk_engine import compute_risk, clamp
 from arkashri.models import FormulaRegistry, WeightSet, SignalType, WeightEntry

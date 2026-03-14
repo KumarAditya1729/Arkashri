@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 services/jwt_service.py — Hardened JWT signing and verification
 ===============================================================

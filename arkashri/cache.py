@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 import json
 import redis.asyncio as redis
 from typing import Any

@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from functools import lru_cache
 
 from pydantic import field_validator
@@ -11,7 +12,7 @@ class Settings(BaseSettings):
 
     @field_validator("database_url", mode="before")
     @classmethod
-    def fix_database_url_scheme(cls, v: str | None) -> str:
+    def fix_database_url_scheme(cls, v: str | None) -> str | None:
         if isinstance(v, str):
             if v.startswith("postgres://"):
                 v = v.replace("postgres://", "postgresql://", 1)

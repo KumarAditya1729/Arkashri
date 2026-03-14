@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from fastapi import APIRouter
 from pydantic import BaseModel
 

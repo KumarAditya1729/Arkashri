@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 routers/erp_ingestion.py — ERP Integration & Sync Endpoints
 

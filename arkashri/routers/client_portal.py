@@ -1,5 +1,5 @@
-import uuid# Force redeploy
-
+# pyre-ignore-all-errors
+import uuid
 import secrets
 import datetime
 from fastapi import APIRouter, Depends, HTTPException, Header
@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 
-from arkashri.dependencies import get_session, require_api_client, AuthContext
-
+from arkashri.dependencies import get_session, require_api_client
+from arkashri.models import ClientRole
+from arkashri.services.security import AuthContext
 from arkashri.models import (
     Engagement, 
     ClientPortalAccess, 

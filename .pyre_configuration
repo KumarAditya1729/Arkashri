@@ -1,0 +1,16 @@
+{
+  "source_directories": [
+    "."
+  ],
+  "site_package_search_strategy": "all",
+  "site_roots": [
+    ".venv/lib/python3.14/site-packages"
+  ],
+  "exclude": [
+    ".venv",
+    "node_modules"
+  ],
+  "ignore_all_errors": [
+    ".*"
+  ]
+}

@@ -1,8 +1,9 @@
+# pyre-ignore-all-errors
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from arkashri.db import get_session
-from arkashri.models import ClientRole
+from arkashri.models import ClientRole, EngagementType
 from arkashri.schemas import AuditPlaybookCreate, AuditPlaybookOut
 from arkashri.services.playbook import create_playbook, generate_playbook_for_engagement
 from arkashri.dependencies import require_api_client, AuthContext
@@ -21,7 +22,7 @@ async def usas_create_playbook(
 
 @router.get("/generate", response_model=AuditPlaybookOut)
 async def usas_generate_playbook(
-    audit_type: str,
+    audit_type: EngagementType,
     sector: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),

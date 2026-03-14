@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """Add USAS Phase 1 models
 
 Revision ID: ab02c8edb21f

@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """Gap 3 Client Portal Access
 
 Revision ID: ba6f54a1f0de

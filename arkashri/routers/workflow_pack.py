@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from fastapi import APIRouter, HTTPException
 from arkashri.schemas import WorkflowPackIndexOut, WorkflowTemplateOut
 from arkashri.services.workflow_pack import get_workflow_pack_summary, load_workflow_template

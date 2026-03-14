@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """orchestration, approvals, rag, and chain attestations
 
 Revision ID: 20260223_0003

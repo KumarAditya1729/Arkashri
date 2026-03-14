@@ -1,4 +1,6 @@
+# pyre-ignore-all-errors
 import uuid
+from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,7 +70,7 @@ async def evaluate_cross_border_constraints(
     )
     policies = result.all()
 
-    response = {
+    response: dict[str, Any] = {
         "allowed": True,
         "enforcement_actions": [],
         "constraints": []

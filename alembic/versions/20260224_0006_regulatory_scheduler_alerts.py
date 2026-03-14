@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """regulatory scheduler and alert tables
 
 Revision ID: 20260224_0006

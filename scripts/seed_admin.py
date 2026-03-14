@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 #!/usr/bin/env python3
 """
 scripts/seed_admin.py — Bootstrap first ADMIN user

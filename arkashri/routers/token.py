@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 routers/token.py — JWT Authentication Endpoint
 ===============================================

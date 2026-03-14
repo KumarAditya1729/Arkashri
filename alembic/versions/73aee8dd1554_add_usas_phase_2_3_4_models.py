@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """Add USAS Phase 2 3 4 models
 
 Revision ID: 73aee8dd1554
@@ -5,6 +6,7 @@ Revises: ab02c8edb21f
 Create Date: 2026-02-24 14:34:46.222727
 
 """
+# pyre-ignore-all-errors[21, 58]
 from typing import Sequence, Union
 
 from alembic import op

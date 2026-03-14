@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from fastapi import APIRouter
 
 from arkashri.routers.engagements import router as engagements_router
@@ -25,6 +26,8 @@ from arkashri.routers.seal_sessions import router as seal_sessions_router
 from arkashri.routers.erp_ingestion import router as erp_ingestion_router
 from arkashri.routers.users import router as users_router
 from arkashri.routers.websockets import router as websockets_router
+from arkashri.routers.controls import router as controls_router
+from arkashri.routers.planning import router as planning_router
 
 router = APIRouter()
 
@@ -52,4 +55,6 @@ router.include_router(risks_router, prefix="", tags=["Risk Register"])
 router.include_router(evidence_router, prefix="", tags=["Evidence Management"])
 router.include_router(seal_sessions_router, prefix="", tags=["Multi-Partner Seal Sessions"])
 router.include_router(erp_ingestion_router, prefix="", tags=["ERP Integration"])
+router.include_router(controls_router, prefix="", tags=["Controls Registry"])
+router.include_router(planning_router, prefix="", tags=["Audit Planning"])
 router.include_router(websockets_router, tags=["WebSockets"])

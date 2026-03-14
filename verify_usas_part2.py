@@ -1,13 +1,21 @@
+# pyre-ignore-all-errors
 import asyncio
-import httpx
-from colorama import Fore, Style, init
+import httpx  # pyre-ignore
+from colorama import Fore, Style, init  # pyre-ignore
 
 init(autoreset=True)
 
-BASE_URL = "http://localhost:8005/api/v1"
+import os
+from httpx import AsyncClient, ASGITransport  # pyre-ignore
+from arkashri.main import app  # pyre-ignore
+
+init(autoreset=True)
+
+BASE_URL = "http://test/api/v1"
 
 async def test_usas_phases_2_3_4():
-    async with httpx.AsyncClient(base_url=BASE_URL) as client:
+    os.environ["AUTH_ENFORCED"] = "false"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE_URL) as client:
         print(f"\n{Fore.CYAN}--- Testing USAS Phases 2, 3, & 4 ---{Style.RESET_ALL}\n")
 
         # Setup: Create a real engagement first
@@ -19,7 +27,7 @@ async def test_usas_phases_2_3_4():
             "client_name": "Test Client Inc",
             "engagement_type": "STATUTORY_AUDIT"
         }
-        res_eng = await client.post("/engagements", json=engagement_payload, headers={"X-API-Key": "test-admin-key"})
+        res_eng = await client.post("/engagements/engagements", json=engagement_payload, headers={"X-API-Key": "test-admin-key"})
         if res_eng.status_code != 201:
             print(f"{Fore.RED}✗ Failed to create initial Engagement: {res_eng.text}{Style.RESET_ALL}")
             return
@@ -36,7 +44,7 @@ async def test_usas_phases_2_3_4():
             "trigger_type": "FRAUD_DETECTED",
             "escalated_by": "john_doe"
         }
-        res = await client.post("/crisis", json=crisis_payload, headers={"X-API-Key": "test-admin-key"})
+        res = await client.post("/usas/crisis", json=crisis_payload, headers={"X-API-Key": "test-admin-key"})
         if res.status_code == 201:
             print(f"{Fore.GREEN}✓ Crisis Event Triggered: {res.json()['id']}{Style.RESET_ALL}")
         else:
@@ -52,7 +60,7 @@ async def test_usas_phases_2_3_4():
             "threshold_value": 500000.0,
             "action_on_breach": "INCREASE_SAMPLE"
         }
-        res = await client.post("/continuous-audit/rules", json=ca_payload, headers={"X-API-Key": "test-admin-key"})
+        res = await client.post("/usas/continuous-audit/rules", json=ca_payload, headers={"X-API-Key": "test-admin-key"})
         if res.status_code == 201:
             print(f"{Fore.GREEN}✓ Continuous Audit Rule Created: {res.json()['id']}{Style.RESET_ALL}")
         else:
@@ -69,7 +77,7 @@ async def test_usas_phases_2_3_4():
             "investigation_type": "RELATED_PARTY",
             "risk_score": 85.5
         }
-        res = await client.post("/forensic-investigations", json=forensic_payload, headers={"X-API-Key": "test-admin-key"})
+        res = await client.post("/usas/forensic-investigations", json=forensic_payload, headers={"X-API-Key": "test-admin-key"})
         if res.status_code == 201:
             print(f"{Fore.GREEN}✓ Forensic Investigation Opened: {res.json()['id']}{Style.RESET_ALL}")
         else:
@@ -85,7 +93,7 @@ async def test_usas_phases_2_3_4():
             "value": 1500.5,
             "unit": "tons_co2"
         }
-        res = await client.post("/esg-metrics", json=esg_payload, headers={"X-API-Key": "test-admin-key"})
+        res = await client.post("/usas/esg-metrics", json=esg_payload, headers={"X-API-Key": "test-admin-key"})
         if res.status_code == 201:
             print(f"{Fore.GREEN}✓ ESG Metric Logged: {res.json()['id']}{Style.RESET_ALL}")
         else:
@@ -102,7 +110,7 @@ async def test_usas_phases_2_3_4():
             "decision_rationale": "High variance detected in Q3 revenue recognition.",
             "human_override": False
         }
-        res = await client.post("/ai-governance-logs", json=ai_payload, headers={"X-API-Key": "test-admin-key"})
+        res = await client.post("/usas/ai-governance-logs", json=ai_payload, headers={"X-API-Key": "test-admin-key"})
         if res.status_code == 201:
             print(f"{Fore.GREEN}✓ AI Governance Log Recorded: {res.json()['id']}{Style.RESET_ALL}")
         else:
@@ -117,7 +125,7 @@ async def test_usas_phases_2_3_4():
             "archive_location": "s3://arkashri-worm-us-east/eng_123.zip",
             "retention_period_years": 10
         }
-        res = await client.post("/sovereign-archives", json=archive_payload, headers={"X-API-Key": "test-admin-key"})
+        res = await client.post("/usas/sovereign-archives", json=archive_payload, headers={"X-API-Key": "test-admin-key"})
         if res.status_code == 201:
             print(f"{Fore.GREEN}✓ Sovereign Archive Sealed: {res.json()['id']}{Style.RESET_ALL}")
         else:

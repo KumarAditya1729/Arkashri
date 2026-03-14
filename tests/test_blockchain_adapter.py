@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from unittest.mock import patch
 from arkashri.services.blockchain_adapter import list_adapters, run_adapter_anchor
 

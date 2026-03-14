@@ -1,11 +1,13 @@
+# pyre-ignore-all-errors
 from __future__ import annotations
 
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from arkashri.db import get_session
-from arkashri.models import ClientRole
+from arkashri.models import ClientRole, Engagement
 from arkashri.schemas import (
     EngagementCreate,
     EngagementOut,
@@ -23,18 +25,9 @@ from arkashri.services.opinion import generate_draft_opinion
 from arkashri.services.seal import generate_audit_seal
 from arkashri.services.esg import upsert_esg_metrics
 from arkashri.services.forensic import upsert_forensic_profile
-from arkashri.services.engagement import create_engagement, get_engagement, compute_materiality, list_engagements
 from arkashri.dependencies import require_api_client, AuthContext
-from typing import List
 
 router = APIRouter()
-
-@router.get("/engagements", response_model=List[EngagementOut])
-async def get_all_engagements(
-    session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.READ_ONLY, ClientRole.REVIEWER})),
-) -> List[EngagementOut]:
-    return await list_engagements(session)
 
 @router.post("/engagements", response_model=EngagementOut, status_code=status.HTTP_201_CREATED)
 async def create_new_engagement(
@@ -42,7 +35,18 @@ async def create_new_engagement(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> EngagementOut:
-    return await create_engagement(session, payload)
+    engagement = await create_engagement(session, payload)
+    return EngagementOut.model_validate(engagement)
+
+
+@router.get("/engagements", response_model=list[EngagementOut])
+async def list_engagements(
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.READ_ONLY, ClientRole.REVIEWER})),
+) -> list[EngagementOut]:
+    """List all engagements ordered by most recent first."""
+    results = list(await session.scalars(select(Engagement).order_by(Engagement.created_at.desc())))
+    return [EngagementOut.model_validate(e) for e in results]
 
 
 @router.get("/engagements/{engagement_id}", response_model=EngagementOut)
@@ -54,7 +58,7 @@ async def get_engagement_by_id(
     engagement = await get_engagement(session, engagement_id)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
-    return engagement
+    return EngagementOut.model_validate(engagement)
 
 
 @router.post("/engagements/{engagement_id}/materiality", response_model=MaterialityOut, status_code=status.HTTP_201_CREATED)
@@ -68,13 +72,14 @@ async def generate_materiality(
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
         
-    return await compute_materiality(
+    materiality = await compute_materiality(
         session,
         engagement_id=engagement_id,
         tenant_id=engagement.tenant_id,
         jurisdiction=engagement.jurisdiction,
         payload=payload
     )
+    return MaterialityOut.model_validate(materiality)
 
 
 @router.post("/engagements/{engagement_id}/opinion", response_model=OpinionOut, status_code=status.HTTP_201_CREATED)
@@ -88,13 +93,14 @@ async def generate_opinion(
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
         
-    return await generate_draft_opinion(
+    opinion = await generate_draft_opinion(
         session,
         engagement_id=engagement_id,
         tenant_id=engagement.tenant_id,
         jurisdiction=engagement.jurisdiction,
         payload=payload
     )
+    return OpinionOut.model_validate(opinion)
 
 @router.post("/engagements/{engagement_id}/seal", status_code=status.HTTP_201_CREATED)
 async def seal_engagement(

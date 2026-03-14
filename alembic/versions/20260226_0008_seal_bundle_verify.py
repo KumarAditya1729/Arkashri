@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 Alembic Migration: Seal Bundle Persistence & Verification Columns
 =================================================================

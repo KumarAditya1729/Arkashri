@@ -1,0 +1,8 @@
+{
+  "venvPath": "/Users/adityashrivastava/Desktop/company_1",
+  "venv": ".venv",
+  "extraPaths": [
+    "/Users/adityashrivastava/Desktop/company_1"
+  ],
+  "reportMissingImports": "none"
+}

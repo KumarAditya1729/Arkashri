@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 routers/seal_sessions.py — Multi-Partner Co-Sign Endpoints
 

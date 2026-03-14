@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from __future__ import annotations
 
 import uuid
@@ -24,6 +25,7 @@ from arkashri.models import (
     ReportStatus,
     SignalType,
     FrameworkType,
+    StandardsFramework,
     PolicyEnforcementAction,
     CrisisTriggerType,
     CrisisStatus,
@@ -657,6 +659,7 @@ class EngagementOut(BaseModel):
     id: uuid.UUID
     tenant_id: str
     jurisdiction: str
+    standards_framework: StandardsFramework
     client_name: str
     engagement_type: EngagementType
     status: EngagementStatus
@@ -929,3 +932,20 @@ class ForensicProfileOut(ForensicProfileCreate):
     engagement_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+
+class SystemAuditLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    tenant_id: str
+    user_id: uuid.UUID | None
+    user_email: str | None
+    action: str
+    resource_type: str
+    resource_id: str | None
+    status: str
+    extra_metadata: dict[str, Any] | None
+    request_id: str | None
+    ip_address: str | None
+    user_agent: str | None
+    created_at: datetime

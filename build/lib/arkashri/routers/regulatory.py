@@ -1,6 +1,7 @@
+# pyre-ignore-all-errors
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -13,6 +14,7 @@ from arkashri.schemas import (
     RegulatoryDocumentOut,
     RegulatoryPromoteRequest,
     RegulatoryPromoteResponse,
+    RegulatoryIngestRunOut,
 )
 from arkashri.services.regulatory_ingestion import (
     bootstrap_regulatory_sources,
@@ -30,7 +32,7 @@ async def regulatory_bootstrap_sources(
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN})),
 ) -> RegulatorySourceBootstrapResponse:
     added, total = await bootstrap_regulatory_sources(session)
-    return RegulatorySourceBootstrapResponse(sources_added=added, total_active_sources=total)
+    return RegulatorySourceBootstrapResponse(inserted=added, existing=total)
 
 
 @router.get("/sources/{jurisdiction}", response_model=list[RegulatorySourceOut])
@@ -49,13 +51,11 @@ async def sync_specific_source(
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> RegulatorySyncResponse:
-    from fastapi import HTTPException
     source = await session.scalar(select(RegulatorySource).where(RegulatorySource.source_key == source_key))
     if not source:
         raise HTTPException(status_code=404, detail="Source not found")
-        
     run = await ingest_source(session, source=source)
-    return RegulatorySyncResponse(run_id=run.id, status=run.status, fetched_count=run.fetched_count, inserted_count=run.inserted_count)
+    return RegulatorySyncResponse(runs=[RegulatoryIngestRunOut.model_validate(run)])
 
 
 @router.post("/sync/jurisdiction/{jurisdiction}", response_model=list[RegulatorySyncResponse])
@@ -65,10 +65,7 @@ async def sync_jurisdiction(
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> list[RegulatorySyncResponse]:
     runs = await ingest_jurisdiction_sources(session, jurisdiction=jurisdiction)
-    return [
-        RegulatorySyncResponse(run_id=r.id, status=r.status, fetched_count=r.fetched_count, inserted_count=r.inserted_count)
-        for r in runs
-    ]
+    return [RegulatorySyncResponse(runs=[RegulatoryIngestRunOut.model_validate(r) for r in runs])]
 
 
 @router.get("/documents/{jurisdiction}", response_model=list[RegulatoryDocumentOut])
@@ -95,16 +92,109 @@ async def promote_document(
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.REVIEWER})),
 ) -> RegulatoryPromoteResponse:
-    from fastapi import HTTPException
     try:
         doc = await session.scalar(select(RegulatoryDocument).where(RegulatoryDocument.id == document_id))
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
         knowledge_doc_id = await promote_regulatory_document(session, regulatory_document=doc)
         return RegulatoryPromoteResponse(
-            document_id=doc.id,
-            is_promoted=doc.is_promoted,
-            promoted_knowledge_doc_id=knowledge_doc_id
+            regulatory_document_id=doc.id,
+            knowledge_document_id=knowledge_doc_id
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ── Gap 7: Regulatory Updates Inbox ──────────────────────────────────────────
+
+@router.get("/updates", summary="Regulatory updates inbox (ICAI / SEBI / MCA)")
+async def list_regulatory_updates(
+    authority: str | None = Query(default=None, description="Filter by ICAI, SEBI, or MCA"),
+    limit: int = Query(default=50, ge=1, le=200),
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(
+        require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})
+    ),
+) -> list[dict]:
+    """
+    Regulatory inbox — most recent ICAI SA circulars, SEBI circulars, MCA amendments.
+    Use ?authority=ICAI|SEBI|MCA to filter by source.
+    New items appear after the daily feed job runs (or POST /updates/run-now).
+    """
+    stmt = select(RegulatoryDocument).order_by(RegulatoryDocument.ingested_at.desc()).limit(limit)
+    if authority:
+        stmt = select(RegulatoryDocument).where(
+            RegulatoryDocument.authority == authority.upper()
+        ).order_by(RegulatoryDocument.ingested_at.desc()).limit(limit)
+
+    docs = list(await session.scalars(stmt))
+    return [
+        {
+            "id": doc.id,
+            "authority": doc.authority,
+            "jurisdiction": doc.jurisdiction,
+            "title": doc.title,
+            "summary": doc.summary,
+            "url": doc.document_url,
+            "published_on": doc.published_on.isoformat() if doc.published_on else None,
+            "ingested_at": doc.ingested_at.isoformat(),
+            "is_promoted": doc.is_promoted,
+            "content_hash": doc.content_hash,
+        }
+        for doc in docs
+    ]
+
+
+@router.post("/updates/run-now", summary="Trigger immediate regulatory feed refresh (ICAI + SEBI + MCA)")
+async def run_regulatory_feeds_now(
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN})),
+) -> dict:
+    """
+    Immediately fetches all three regulatory feeds and inserts any new documents.
+    Returns count of new items per source. Use this to seed the inbox or for manual refresh.
+    """
+    from arkashri.services.regulatory_feed import run_all_feeds
+    results = await run_all_feeds(session)
+    total_new = sum(v for v in results.values() if v >= 0)
+    return {
+        "status": "completed",
+        "new_items_by_source": results,
+        "total_new": total_new,
+    }
+
+
+@router.get("/updates/diff/{doc_id_1}/{doc_id_2}", summary="Diff two regulatory documents")
+async def diff_regulatory_documents(
+    doc_id_1: int,
+    doc_id_2: int,
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> dict:
+    """
+    Returns a unified diff of the content text of two regulatory documents.
+    Used to highlight exact rule changes between a previous and current standard.
+    """
+    import difflib
+    doc1 = await session.scalar(select(RegulatoryDocument).where(RegulatoryDocument.id == doc_id_1))
+    doc2 = await session.scalar(select(RegulatoryDocument).where(RegulatoryDocument.id == doc_id_2))
+    
+    if not doc1 or not doc2:
+        raise HTTPException(status_code=404, detail="One or both documents not found")
+        
+    text1 = doc1.content_text.splitlines()
+    text2 = doc2.content_text.splitlines()
+    
+    diff = list(difflib.unified_diff(
+        text1, text2, 
+        fromfile=f"v{doc1.id}", tofile=f"v{doc2.id}", 
+        lineterm=""
+    ))
+    
+    return {
+        "doc1_id": doc1.id,
+        "doc2_id": doc2.id,
+        "diff_lines": diff,
+        "diff_text": "\n".join(diff)
+    }
+

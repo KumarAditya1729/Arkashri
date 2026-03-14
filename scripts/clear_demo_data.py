@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 import asyncio
 from sqlalchemy import text
 from arkashri.db import engine, AsyncSessionLocal

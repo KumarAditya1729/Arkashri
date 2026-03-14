@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """Add auditor workflow models
 
 Revision ID: b66fe5cf332c

@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """security clients and idempotency records
 
 Revision ID: 20260224_0004

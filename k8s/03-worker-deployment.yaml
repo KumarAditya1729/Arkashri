@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arkashri-worker
+  namespace: arkashri
+  labels:
+    app: arkashri-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: arkashri-worker
+  template:
+    metadata:
+      labels:
+        app: arkashri-worker
+    spec:
+      containers:
+      - name: arkashri-worker
+        image: your-aws-account-id.dkr.ecr.us-east-1.amazonaws.com/arkashri-backend:latest
+        command: ["arq", "arkashri.worker.WorkerSettings"]
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: arkashri-config
+        - secretRef:
+            name: arkashri-secrets
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"

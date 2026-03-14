@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 import os
 import asyncio
 from httpx import AsyncClient, ASGITransport

@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 Risk Register router — engagement-scoped CRUD for audit risks.
 Wires the frontend Risk Register page to Postgres.
@@ -9,54 +10,11 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, Float, ForeignKey, String, Enum as SAEnum, select, func, Uuid
-from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from arkashri.db import Base, get_session
-from arkashri.models import ClientRole, Engagement
+from arkashri.db import get_session
+from arkashri.models import ClientRole, Engagement, RiskEntry, RiskLikelihood, RiskImpact, RiskStatus
 from arkashri.dependencies import require_api_client, AuthContext
-import enum
 
 router = APIRouter()
-
-# ─── Model ───────────────────────────────────────────────────────────────────
-
-class RiskLikelihood(str, enum.Enum):
-    HIGH   = "High"
-    MEDIUM = "Medium"
-    LOW    = "Low"
-
-class RiskImpact(str, enum.Enum):
-    CRITICAL = "Critical"
-    HIGH     = "High"
-    MEDIUM   = "Medium"
-    LOW      = "Low"
-
-class RiskStatus(str, enum.Enum):
-    OPEN      = "Open"
-    IN_REVIEW = "In Review"
-    MITIGATED = "Mitigated"
-    ACCEPTED  = "Accepted"
-
-
-class RiskEntry(Base):
-    __tablename__ = "risk_entries"
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    engagement_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("engagement.id", ondelete="CASCADE"), nullable=False, index=True)
-    tenant_id      = Column(String, nullable=False, index=True)
-    risk_ref       = Column(String, nullable=False)            # RSK-001 etc
-    title          = Column(String, nullable=False)
-    area           = Column(String, nullable=False, default="General")
-    likelihood: RiskLikelihood = Column(SAEnum(RiskLikelihood), nullable=False) # type: ignore
-    impact: RiskImpact = Column(SAEnum(RiskImpact), nullable=False) # type: ignore
-    risk_score     = Column(Float, nullable=False)
-    owner          = Column(String, nullable=False, default="Unassigned")
-    control_ref    = Column(String, nullable=True)
-    risk_status: RiskStatus = Column(SAEnum(RiskStatus), nullable=False, default=RiskStatus.OPEN) # type: ignore
-    created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────

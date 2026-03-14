@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from arkashri.models import ClientRole
 from arkashri.services.security import build_system_context, hash_api_key
 

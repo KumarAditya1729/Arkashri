@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """merge_multiple_heads
 
 Revision ID: 7d7f4ef8f7d5

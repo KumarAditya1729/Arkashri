@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from arkashri.services.hash_chain import ZERO_HASH
 from arkashri.services.merkle import merkle_root
 from arkashri.services.realtime import RealtimeHub

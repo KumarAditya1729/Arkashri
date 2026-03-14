@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 services/erp_adapter.py — ERP Normalizer
 =========================================

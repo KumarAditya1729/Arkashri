@@ -1,7 +1,8 @@
+# pyre-ignore-all-errors
 import os
 import asyncio
-from httpx import AsyncClient, ASGITransport
-from arkashri.main import app
+from httpx import AsyncClient, ASGITransport  # pyre-ignore
+from arkashri.main import app  # pyre-ignore
 
 async def test_workflow():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

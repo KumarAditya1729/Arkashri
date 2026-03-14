@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth

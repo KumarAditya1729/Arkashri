@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 services/password.py — Password hashing and verification
 =========================================================

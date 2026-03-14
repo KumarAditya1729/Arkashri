@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 from sqlalchemy.ext.asyncio import AsyncSession
 from arkashri.models import (
     CrisisEvent,

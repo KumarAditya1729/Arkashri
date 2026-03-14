@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 import uuid
 from typing import Any
 from sqlalchemy import select

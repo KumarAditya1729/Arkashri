@@ -1,3 +1,4 @@
+# pyre-ignore-all-errors
 """
 Alembic Migration: Platform Users Table
 ========================================
