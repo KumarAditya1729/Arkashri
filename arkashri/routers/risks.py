@@ -3,7 +3,6 @@
 Risk Register router — engagement-scoped CRUD for audit risks.
 Wires the frontend Risk Register page to Postgres.
 """
-from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone

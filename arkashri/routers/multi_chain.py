@@ -3,7 +3,6 @@
 Multi-Chain Blockchain API endpoints
 Provides blockchain anchoring and verification across multiple networks
 """
-from __future__ import annotations
 
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks

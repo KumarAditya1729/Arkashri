@@ -10,7 +10,6 @@ Endpoints:
   POST /token/refresh    Refresh access token using refresh token
   POST /token/verify     Verify a token is valid (for API gateway health checks)
 """
-from __future__ import annotations
 
 import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Request

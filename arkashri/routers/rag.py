@@ -1,5 +1,4 @@
 # pyre-ignore-all-errors
-from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession

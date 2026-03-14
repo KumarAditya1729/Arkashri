@@ -15,7 +15,6 @@ Endpoints:
 All mock endpoints return realistic-looking data for each ERP system
 so the integration can be demoed without a live ERP instance.
 """
-from __future__ import annotations
 
 import time
 import uuid
