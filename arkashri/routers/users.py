@@ -1,10 +1,9 @@
 # pyre-ignore-all-errors
 """
 routers/users.py — User Management API
-=======================================
-Full CRUD for platform users within a tenant.
 
 Endpoints:
+  POST   /auth/register              Public self-registration
   POST   /auth/users                  Create a new user (ADMIN only)
   GET    /auth/users                  List all users in tenant
   GET    /auth/users/{user_id}        Get single user
@@ -12,8 +11,6 @@ Endpoints:
   DELETE /auth/users/{user_id}        Soft-delete (deactivate) user
   POST   /auth/users/{user_id}/reset-password  Change password (self or ADMIN)
 """
-from __future__ import annotations
-
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
