@@ -119,7 +119,7 @@ async def list_approval_requests(
 
 @router.post("/requests/{request_id}/actions", response_model=ApprovalRequestOut)
 async def action_approval_request(
-    request_id: uuid.UUID,
+    request_id: str,
     payload: ApprovalActionCreate,
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.REVIEWER})),

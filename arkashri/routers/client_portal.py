@@ -29,7 +29,7 @@ class PortalAccessRequest(BaseModel):
 
 @router.post("/engagements/{engagement_id}/access")
 async def generate_portal_access(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     payload: PortalAccessRequest,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR}))

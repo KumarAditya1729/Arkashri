@@ -210,7 +210,7 @@ async def list_users(
     summary="Get a single user by ID",
 )
 async def get_user(
-    user_id: uuid.UUID,
+    user_id: str,
     db: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
 ) -> UserOut:
@@ -226,7 +226,7 @@ async def get_user(
     summary="Update user role, name, or active status (ADMIN only)",
 )
 async def update_user(
-    user_id: uuid.UUID,
+    user_id: str,
     payload: UpdateUserRequest,
     db: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN})),
@@ -256,7 +256,7 @@ async def update_user(
     summary="Deactivate (soft-delete) a user",
 )
 async def deactivate_user(
-    user_id: uuid.UUID,
+    user_id: str,
     db: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN})),
 ) -> None:
@@ -276,7 +276,7 @@ async def deactivate_user(
     summary="Reset a user's password (self-service requires current_password; ADMIN can skip it)",
 )
 async def reset_password(
-    user_id: uuid.UUID,
+    user_id: str,
     payload: ResetPasswordRequest,
     db: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
