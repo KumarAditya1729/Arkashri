@@ -159,12 +159,24 @@ async def _coverage_counts(session: AsyncSession, tenant_id: str, jurisdiction: 
 
 
 # Map JWT user roles → ClientRole for permission checks
+# Handles both uppercase (UserRole enum values) and lowercase (frontend-assigned roles)
 _JWT_ROLE_MAP: dict[str, ClientRole] = {
+    # Uppercase (canonical backend UserRole enum values)
     "ADMIN":     ClientRole.ADMIN,
     "OPERATOR":  ClientRole.OPERATOR,
     "REVIEWER":  ClientRole.REVIEWER,
     "READ_ONLY": ClientRole.READ_ONLY,
+    # Lowercase (frontend-registered user roles)
+    "admin":     ClientRole.ADMIN,
+    "operator":  ClientRole.OPERATOR,
+    "reviewer":  ClientRole.REVIEWER,
+    "read_only": ClientRole.READ_ONLY,
+    # Aliases used by the register page
+    "auditor":   ClientRole.OPERATOR,   # Auditors get full operator rights
+    "ca":        ClientRole.OPERATOR,
+    "partner":   ClientRole.ADMIN,
 }
+
 
 
 def require_api_client(allowed_roles: set[ClientRole] | None = None):
