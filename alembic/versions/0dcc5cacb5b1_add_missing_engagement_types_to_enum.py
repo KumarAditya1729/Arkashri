@@ -19,7 +19,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Add newly introduced Enum values to Postgres ENUM type
+    # Postgres requires ALTER TYPE ... ADD VALUE to run outside a transaction block
+    connection = op.get_bind()
+    if connection.dialect.name == "postgresql":
+        op.execute("COMMIT")
+    
     new_types = [
         'FINANCIAL_AUDIT',
         'EXTERNAL_AUDIT',
@@ -33,9 +37,9 @@ def upgrade() -> None:
         'SINGLE_AUDIT'
     ]
     for eng_type in new_types:
-        op.execute(f"ALTER TYPE engagement_type ADD VALUE IF NOT EXISTS '{eng_type}'")
-
+        if connection.dialect.name == "postgresql":
+            # The type must be modified outside of an active transaction
+            op.execute(f"ALTER TYPE engagement_type ADD VALUE IF NOT EXISTS '{eng_type}'")
 
 def downgrade() -> None:
-    # Removing ENUM values is not natively supported in Postgres without recreating the type
     pass
