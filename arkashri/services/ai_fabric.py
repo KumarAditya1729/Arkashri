@@ -27,9 +27,18 @@ except ImportError:
 class OpenAIInference:
     """Helper to maintain persistent circuit breaker state across inference calls."""
     @circuit(failure_threshold=3, recovery_timeout=60)
-    async def call(self, system_prompt: str, user_prompt: str) -> str:
+    async def call(self, system_prompt: str, user_prompt: str, response_model: type[BaseModel] | None = None) -> str:
         if not client:
             raise RuntimeError("Client uninitialized")
+            
+        # Default to AuditVerdict if none provided to keep backward compatibility
+        if response_model:
+            schema_name = response_model.__name__.lower()
+            schema_dict = response_model.model_json_schema()
+        else:
+            # Local import to avoid circular dependencies if needed, or just use AuditVerdict
+            schema_name = "audit_verdict"
+            schema_dict = AuditVerdict.model_json_schema()
             
         response = await client.chat.completions.create(
             model="gpt-4o",
@@ -40,8 +49,8 @@ class OpenAIInference:
             response_format={
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "audit_verdict",
-                    "schema": AuditVerdict.model_json_schema()
+                    "name": schema_name,
+                    "schema": schema_dict
                 }
             },
             temperature=0.1,
@@ -174,7 +183,11 @@ async def generate_contextual_insight(
     )
 
     try:
-        raw_json = await inference_engine.call(system_prompt, user_prompt)
+        raw_json = await inference_engine.call(
+            system_prompt, 
+            user_prompt, 
+            response_model=ContextualInsight
+        )
         if not raw_json:
             raise ValueError("No content returned from OpenAI")
         
