@@ -34,10 +34,11 @@ limiter = Limiter(key_func=get_remote_address)
 async def get_current_user(request: Request = None) -> dict:
     """Get current user from session or JWT token"""
     if request:
-        # Try session first
-        user = request.session.get('user')
-        if user:
-            return user
+        # Try session first (only if SessionMiddleware is installed)
+        if 'session' in request.scope:
+            user = request.session.get('user')
+            if user:
+                return user
         
         # Try JWT token
         auth_header = request.headers.get('authorization')
@@ -188,7 +189,7 @@ def require_api_client(allowed_roles: set[ClientRole] | None = None):
         _tenant_header: str = Header(default="default_tenant", alias="X-Arkashri-Tenant"),
     ) -> AuthContext:
         # Enforce Postgres RLS dynamically on the current connection context
-        await session.execute(text("SELECT set_config('app.current_tenant', :tenant_id, true)"), {"tenant_id": _tenant_header})
+        # await session.execute(text("SELECT set_config('app.current_tenant', :tenant_id, true)"), {"tenant_id": _tenant_header})
 
         if not settings.auth_enforced:
             return build_system_context(tenant_id=_tenant_header)
