@@ -58,9 +58,11 @@ async def get_contextual_lens(
         )
         return insight
 
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (e.g., 404) unchanged
     except Exception as e:
         logger.error("contextual_lens_api_error", error=str(e), user_id=current_user.get("id"))
-        raise HTTPException(status_code=500, detail="Failed to generate contextual insight")
+        raise HTTPException(status_code=500, detail=f"Failed to generate contextual insight: {str(e)}")
 
 class AuditDataRequest(BaseModel):
     """Request model for audit pattern analysis"""
