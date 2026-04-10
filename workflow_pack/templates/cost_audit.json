@@ -1,0 +1,183 @@
+{
+  "workflow_id": "cost_audit_v1",
+  "audit_type": "cost_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "cost_auditor_cma",
+    "what": "cost_records_efficiency_and_allocation",
+    "when": "annual_or_as_mandated"
+  },
+  "objective": "Verify accuracy of cost records, validate cost allocation methods, and ensure cost efficiency across production, materials, labour, and overheads as per applicable cost accounting standards.",
+  "scope_fields": [
+    "product_categories_in_scope",
+    "cost_centres",
+    "cost_allocation_methods",
+    "production_period",
+    "applicable_cost_standards",
+    "inventory_valuation_method"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Engagement Acceptance And Scope",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Confirm statutory applicability (Companies (Cost Records and Audit) Rules), identify product/industry scope and CAS standards applicable.",
+          "owner_role": "Cost Audit Lead",
+          "outputs": ["Applicability memo", "Scope definition"],
+          "evidence": ["Turnover threshold analysis", "Industry classification proof"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Obtain and review cost accounting policies, allocation bases, and ERP cost centre structure.",
+          "owner_role": "Cost Auditor",
+          "outputs": ["Cost policy review memo"],
+          "evidence": ["Cost accounting policy document", "ERP chart of cost centres"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Cost Record Verification And Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Trace raw material consumption records: verify quantities, rates, and wastage against production records and stock registers.",
+          "owner_role": "Cost Auditor",
+          "outputs": ["Material cost verification workpaper"],
+          "evidence": ["Material issue registers", "Purchase invoices", "Stock reconciliation"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Verify labour cost allocation: test attendance, pay registers, overtime, and allocation to production cost centres.",
+          "owner_role": "Cost Auditor",
+          "outputs": ["Labour cost test workpaper"],
+          "evidence": ["Payroll extract", "Attendance records", "Labour allocation sheets"]
+        },
+        {
+          "step_id": "F3",
+          "action": "Validate overhead absorption: confirm actual vs. absorbed overheads, test allocation keys, and identify over/under-absorption.",
+          "owner_role": "Cost Auditor",
+          "outputs": ["Overhead reconciliation", "Absorption variance analysis"],
+          "evidence": ["Overhead cost ledgers", "Machine hour / labour hour records"]
+        },
+        {
+          "step_id": "F4",
+          "action": "Perform cost-of-production and cost-of-sales reconciliation to financial statements.",
+          "owner_role": "Senior Cost Auditor",
+          "outputs": ["P&L to cost statement bridge"],
+          "evidence": ["Cost statement", "Financial statement extracts", "Journal vouchers"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Cost Efficiency Assessment And Reporting",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Benchmark unit costs against industry norms, prior period, and budgeted cost; identify inefficiencies and waste.",
+          "owner_role": "Cost Audit Manager",
+          "outputs": ["Variance and benchmarking report"],
+          "evidence": ["Industry cost benchmarks", "Budget vs actual comparison"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Prepare Cost Audit Report in prescribed format (Form CRA-3) and obtain management response.",
+          "owner_role": "Cost Audit Manager",
+          "outputs": ["Draft Form CRA-3", "Management response"],
+          "evidence": ["Supporting annexures", "Management sign-off"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Filing And Archive",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "File cost audit report with MCA via XBRL/CRA-4 filing within statutory deadline.",
+          "owner_role": "Cost Compliance Officer",
+          "outputs": ["MCA filing acknowledgement"],
+          "evidence": ["Portal receipt", "SRN (Service Request Number)"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Archive cost audit workpapers with blockchain hash anchor for tamper-proof retention.",
+          "owner_role": "Cost Audit PMO",
+          "outputs": ["Signed archive bundle"],
+          "evidence": ["Hash chain manifest", "Working paper index"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Cost accounting policy and CAS mapping", "required": true, "source_system": "ERP"},
+    {"id": "E2", "description": "Material consumption registers and purchase invoices", "required": true, "source_system": "ERP / WMS"},
+    {"id": "E3", "description": "Payroll and labour allocation records", "required": true, "source_system": "HRMS"},
+    {"id": "E4", "description": "Overhead register and absorption workpaper", "required": true, "source_system": "ERP"},
+    {"id": "E5", "description": "Cost-to-financial reconciliation bridge", "required": true, "source_system": "ERP / GL"},
+    {"id": "E6", "description": "Filed Form CRA-3 and MCA receipt", "required": true, "source_system": "MCA Portal"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Material Cost Trace",
+      "method": "Substantive Vouching",
+      "sample_rule": "Top 20% by value and 100% of unusual/high-wastage items",
+      "steps": [
+        "Select sample of issue vouchers from material issues register.",
+        "Agree quantity to production records and rate to purchase invoices.",
+        "Compute expected material cost and compare to recorded cost.",
+        "Flag variances > 2% for investigation."
+      ],
+      "pass_condition": "Material cost records agree to source documents within acceptable tolerance."
+    },
+    {
+      "script_id": "T2",
+      "name": "Overhead Absorption Validation",
+      "method": "Analytical + Recalculation",
+      "sample_rule": "All overhead cost centres",
+      "steps": [
+        "Obtain actual overhead costs per cost centre.",
+        "Recompute absorbed overhead using agreed allocation base (machine hours, labour hours).",
+        "Calculate over/under absorption and confirm accounting treatment.",
+        "Assess reasonableness of allocation base vs. actual production mix."
+      ],
+      "pass_condition": "Over/under absorption is within board-approved policy bands and correctly disclosed."
+    },
+    {
+      "script_id": "T3",
+      "name": "Cost Efficiency Benchmarking",
+      "method": "Analytical Procedure",
+      "sample_rule": "Per product / per cost centre",
+      "steps": [
+        "Compute unit cost per product for current vs prior year.",
+        "Compare to industry cost benchmarks where available.",
+        "Identify cost centres with unfavourable variance > threshold.",
+        "Obtain management explanation for significant deviations."
+      ],
+      "pass_condition": "All material variances are explained, documented, and considered in the audit opinion."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Applicability And Statutory Framework", "required": true},
+    {"id": "R2", "title": "Cost Accounting Policy Review", "required": true},
+    {"id": "R3", "title": "Material, Labour And Overhead Verification", "required": true},
+    {"id": "R4", "title": "Variance And Efficiency Analysis", "required": true},
+    {"id": "R5", "title": "Observations And Recommendations", "required": true},
+    {"id": "R6", "title": "Form CRA-3 Filing Confirmation", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Statutory applicability confirmed.", "evidence_required": ["Applicability memo"]},
+    {"id": "G2", "criteria": "Cost records reconcile to financial statements.", "evidence_required": ["P&L to cost bridge"]},
+    {"id": "G3", "criteria": "Major variances explained and documented.", "evidence_required": ["Variance analysis"]},
+    {"id": "G4", "criteria": "Form CRA-3 filed with MCA within deadline.", "evidence_required": ["MCA SRN receipt"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Cost Record Accuracy Rate", "formula": "VerifiedCostItems / TotalCostItems", "target": ">= 0.98"},
+    {"id": "K2", "name": "Material Wastage Rate", "formula": "ActualWastage / StandardWastage", "target": "<= 1.05"},
+    {"id": "K3", "name": "Overhead Absorption Variance", "formula": "(ActualOverhead - AbsorbedOverhead) / ActualOverhead", "target": "<= 0.03"}
+  ]
+}

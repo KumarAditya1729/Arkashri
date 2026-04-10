@@ -18,7 +18,7 @@ router = APIRouter()
 
 @router.post("/decisions/{decision_id}/override", response_model=DecisionOverrideOut, status_code=status.HTTP_201_CREATED)
 async def record_decision_override(
-    decision_id: uuid.UUID,
+    decision_id: str,
     payload: DecisionOverrideCreate,
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),

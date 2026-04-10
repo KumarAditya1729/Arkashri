@@ -66,7 +66,7 @@ async def get_system_audit_logs(
 
 @router.post("/admin/engagements/{engagement_id}/export-pdf")
 async def export_audit_pdf(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     db: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN})),
 ):

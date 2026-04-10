@@ -34,10 +34,11 @@ limiter = Limiter(key_func=get_remote_address)
 async def get_current_user(request: Request = None) -> dict:
     """Get current user from session or JWT token"""
     if request:
-        # Try session first
-        user = request.session.get('user')
-        if user:
-            return user
+        # Try session first (only if SessionMiddleware is installed)
+        if 'session' in request.scope:
+            user = request.session.get('user')
+            if user:
+                return user
         
         # Try JWT token
         auth_header = request.headers.get('authorization')
@@ -49,13 +50,11 @@ async def get_current_user(request: Request = None) -> dict:
             except Exception:
                 pass
     
-    # Return system user for now (in production, this should raise an error)
-    return {
-        "id": "system",
-        "email": "system@arkashri.com",
-        "role": "system",
-        "tenant_id": "system"
-    }
+    # If no valid token or session is found, reject the request
+    raise HTTPException(
+        status_code=401, 
+        detail="Not authenticated. Valid JWT Bearer token required."
+    )
 
 SYSTEM_TENANT = "_system"
 SYSTEM_JURISDICTION = "GLOBAL"
@@ -159,12 +158,24 @@ async def _coverage_counts(session: AsyncSession, tenant_id: str, jurisdiction: 
 
 
 # Map JWT user roles → ClientRole for permission checks
+# Handles both uppercase (UserRole enum values) and lowercase (frontend-assigned roles)
 _JWT_ROLE_MAP: dict[str, ClientRole] = {
+    # Uppercase (canonical backend UserRole enum values)
     "ADMIN":     ClientRole.ADMIN,
     "OPERATOR":  ClientRole.OPERATOR,
     "REVIEWER":  ClientRole.REVIEWER,
     "READ_ONLY": ClientRole.READ_ONLY,
+    # Lowercase (frontend-registered user roles)
+    "admin":     ClientRole.ADMIN,
+    "operator":  ClientRole.OPERATOR,
+    "reviewer":  ClientRole.REVIEWER,
+    "read_only": ClientRole.READ_ONLY,
+    # Aliases used by the register page
+    "auditor":   ClientRole.OPERATOR,   # Auditors get full operator rights
+    "ca":        ClientRole.OPERATOR,
+    "partner":   ClientRole.ADMIN,
 }
+
 
 
 def require_api_client(allowed_roles: set[ClientRole] | None = None):
@@ -176,7 +187,7 @@ def require_api_client(allowed_roles: set[ClientRole] | None = None):
         _tenant_header: str = Header(default="default_tenant", alias="X-Arkashri-Tenant"),
     ) -> AuthContext:
         # Enforce Postgres RLS dynamically on the current connection context
-        await session.execute(text("SELECT set_config('app.current_tenant', :tenant_id, true)"), {"tenant_id": _tenant_header})
+        # await session.execute(text("SELECT set_config('app.current_tenant', :tenant_id, true)"), {"tenant_id": _tenant_header})
 
         if not settings.auth_enforced:
             return build_system_context(tenant_id=_tenant_header)

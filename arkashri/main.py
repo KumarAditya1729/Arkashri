@@ -383,10 +383,12 @@ async def detailed_metrics():
 from arkashri.routers.standards import router as standards_router
 from arkashri.routers.judgments import router as judgments_router
 from arkashri.routers.client_portal import router as client_portal_router
+from arkashri.routers.reporting import router as reporting_router
 
 app.include_router(api_v1_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(status_router, prefix="/api/v1")
+app.include_router(reporting_router, prefix="/api/v1")
 app.include_router(standards_router, prefix="/api")
 app.include_router(judgments_router, prefix="/api")
 app.include_router(client_portal_router, prefix="/api")

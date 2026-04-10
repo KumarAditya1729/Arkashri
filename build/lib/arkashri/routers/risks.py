@@ -10,6 +10,9 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from arkashri.db import get_session
 from arkashri.models import ClientRole, Engagement, RiskEntry, RiskLikelihood, RiskImpact, RiskStatus
 from arkashri.dependencies import require_api_client, AuthContext

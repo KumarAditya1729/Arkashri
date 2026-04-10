@@ -51,7 +51,7 @@ async def list_engagements(
 
 @router.get("/engagements/{engagement_id}", response_model=EngagementOut)
 async def get_engagement_by_id(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.READ_ONLY, ClientRole.REVIEWER})),
 ) -> EngagementOut:
@@ -63,7 +63,7 @@ async def get_engagement_by_id(
 
 @router.post("/engagements/{engagement_id}/materiality", response_model=MaterialityOut, status_code=status.HTTP_201_CREATED)
 async def generate_materiality(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     payload: MaterialityCreate,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
@@ -84,7 +84,7 @@ async def generate_materiality(
 
 @router.post("/engagements/{engagement_id}/opinion", response_model=OpinionOut, status_code=status.HTTP_201_CREATED)
 async def generate_opinion(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     payload: OpinionCreate,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
@@ -104,7 +104,7 @@ async def generate_opinion(
 
 @router.post("/engagements/{engagement_id}/seal", status_code=status.HTTP_201_CREATED)
 async def seal_engagement(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> dict:
@@ -125,7 +125,7 @@ async def seal_engagement(
     summary="Ingest ESG metrics for an engagement",
 )
 async def upsert_engagement_esg(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     payload: ESGMetricsCreate,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
@@ -150,7 +150,7 @@ async def upsert_engagement_esg(
     summary="Ingest forensic risk profile for an engagement",
 )
 async def upsert_engagement_forensic(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     payload: ForensicProfileCreate,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),

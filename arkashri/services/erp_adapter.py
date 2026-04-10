@@ -118,6 +118,11 @@ def normalize_sap(raw: dict) -> dict:
         "erp_system":   "SAP_S4HANA",
         "erp_doc_id":   str(raw.get("BELNR") or raw.get("erp_doc_id") or ""),
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": str(raw.get("BELNR") or raw.get("ref") or ""),
+            "date": _iso_date(raw.get("BUDAT") or raw.get("date") or date.today()),
+            "amount": amount, "account_code": str(raw.get("HKONT") or raw.get("account_code") or ""),
+        }),
     }
 
 
@@ -156,6 +161,11 @@ def normalize_oracle(raw: dict) -> dict:
         "erp_system":   "ORACLE_FUSION",
         "erp_doc_id":   str(raw.get("JournalEntryLineId") or raw.get("erp_doc_id") or ""),
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": str(raw.get("ExternalReference") or raw.get("JournalEntryLineId") or ""),
+            "date": _iso_date(raw.get("AccountedDate") or raw.get("date") or date.today()),
+            "amount": amount, "account_code": str(raw.get("CodeCombinationId") or ""),
+        }),
     }
 
 
@@ -204,6 +214,11 @@ def normalize_tally(raw: dict) -> dict:
         "erp_system":   "TALLY_PRIME",
         "erp_doc_id":   str(raw.get("VOUCHERNUMBER") or raw.get("erp_doc_id") or ""),
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": str(raw.get("VOUCHERNUMBER") or raw.get("ref") or ""),
+            "date": _iso_date(raw.get("DATE") or raw.get("date") or date.today()),
+            "amount": amount, "account_code": str(raw.get("LEDGERNAME") or ""),
+        }),
     }
 
 
@@ -239,6 +254,11 @@ def normalize_zoho(raw: dict) -> dict:
         "erp_system":   "ZOHO_BOOKS",
         "erp_doc_id":   str(raw.get("journal_id") or raw.get("erp_doc_id") or ""),
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": str(raw.get("reference_number") or raw.get("journal_id") or ""),
+            "date": _iso_date(raw.get("date") or date.today()),
+            "amount": amount, "account_code": str(raw.get("account_id") or ""),
+        }),
     }
 
 
@@ -278,6 +298,11 @@ def normalize_quickbooks(raw: dict) -> dict:
         "erp_system":   "QUICKBOOKS",
         "erp_doc_id":   str(raw.get("Id") or raw.get("erp_doc_id") or ""),
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": str(raw.get("Id") or raw.get("ref") or ""),
+            "date": _iso_date(raw.get("TxnDate") or raw.get("date") or date.today()),
+            "amount": amount, "account_code": str(acct_ref.get("value") or ""),
+        }),
     }
 
 
@@ -309,6 +334,11 @@ def normalize_generic(raw: dict) -> dict:
         "erp_system":   "GENERIC_CSV",
         "erp_doc_id":   str(raw.get("erp_doc_id") or raw.get("ref") or ""),
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": str(raw.get("ref") or ""),
+            "date": _iso_date(raw.get("date") or date.today()),
+            "amount": amount, "account_code": str(raw.get("account_code") or ""),
+        }),
     }
 
 

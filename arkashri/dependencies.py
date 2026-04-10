@@ -50,13 +50,11 @@ async def get_current_user(request: Request = None) -> dict:
             except Exception:
                 pass
     
-    # Return system user for now (in production, this should raise an error)
-    return {
-        "id": "system",
-        "email": "system@arkashri.com",
-        "role": "system",
-        "tenant_id": "system"
-    }
+    # If no valid token or session is found, reject the request
+    raise HTTPException(
+        status_code=401, 
+        detail="Not authenticated. Valid JWT Bearer token required."
+    )
 
 SYSTEM_TENANT = "_system"
 SYSTEM_JURISDICTION = "GLOBAL"

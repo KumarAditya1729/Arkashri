@@ -7,9 +7,9 @@
     ".venv/lib/python3.14/site-packages"
   ],
   "exclude": [
-    ".venv",
-    "node_modules",
-    "arkashri-ai-engineer"
+    "\\.venv/.*",
+    "node_modules/.*",
+    "arkashri-ai-engineer/.*"
   ],
   "ignore_all_errors": [
     ".*"

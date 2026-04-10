@@ -58,11 +58,20 @@ def get_nested(payload: dict[str, Any], dotted_key: str) -> Any:
 
 
 def evaluate_expression(payload: dict[str, Any], expression: dict[str, Any]) -> bool:
+    # ── Compound operators ────────────────────────────────────────────────────
+    # Support both "all"/"any" (original) and "and"/"or" aliases
     if "all" in expression:
         return all(evaluate_expression(payload, item) for item in expression["all"])
     if "any" in expression:
         return any(evaluate_expression(payload, item) for item in expression["any"])
+    if "and" in expression:
+        return all(evaluate_expression(payload, item) for item in expression["and"])
+    if "or" in expression:
+        return any(evaluate_expression(payload, item) for item in expression["or"])
+    if "not" in expression:
+        return not evaluate_expression(payload, expression["not"])
 
+    # ── Leaf expression ───────────────────────────────────────────────────────
     field = expression.get("field")
     op = expression.get("op")
     expected = expression.get("value")

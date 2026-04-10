@@ -121,9 +121,17 @@ class Settings(BaseSettings):
     # Security headers
     allowed_hosts: str = "*"
     cors_origins: list[str] = [
+        # Local development
         "http://127.0.0.1:5173", "http://localhost:5173",
         "http://127.0.0.1:4173", "http://localhost:4173",
         "http://localhost:3000", "http://127.0.0.1:3000",
+        # Production — Vercel frontend
+        "https://arkashri.vercel.app",
+        "https://arkashri-kumaraditya1729s-projects.vercel.app",
+        # Allow all vercel.app preview deployments
+        "https://*.vercel.app",
+        # Railway backend url (for inter-service calls)
+        "https://arkashri-production.up.railway.app",
     ]
     
     # Graceful shutdown

@@ -174,7 +174,7 @@ async def list_connections(
 @limiter.limit("2/minute")
 async def run_erp_sync(
     request: Request,
-    connection_id: uuid.UUID,
+    connection_id: str,
     payload: SyncRequest,
     db: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
@@ -307,7 +307,7 @@ async def run_erp_sync(
     summary="Last N sync logs for an ERP connection",
 )
 async def get_sync_logs(
-    connection_id: uuid.UUID,
+    connection_id: str,
     limit: int = Query(default=20, ge=1, le=100),
     db: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),

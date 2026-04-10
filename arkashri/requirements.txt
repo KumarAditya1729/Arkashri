@@ -26,7 +26,6 @@ numpy==1.25.2
 
 # Blockchain
 web3==6.11.0
-ethers==5.7.0
 substrate-interface==1.5.0
 
 # HTTP & Utilities

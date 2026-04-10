@@ -50,7 +50,8 @@ class OpenAIInference:
                 "type": "json_schema",
                 "json_schema": {
                     "name": schema_name,
-                    "schema": schema_dict
+                    "schema": schema_dict,
+                    "strict": True
                 }
             },
             temperature=0.1,

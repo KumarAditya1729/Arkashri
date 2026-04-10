@@ -15,7 +15,7 @@ router = APIRouter(prefix="/v1/judgments", tags=["Human Judgment"])
 
 @router.get("/{engagement_id}")
 async def list_judgments(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> dict:
@@ -48,7 +48,7 @@ class JudgmentSignOff(BaseModel):
 
 @router.post("/{judgment_id}/sign-off")
 async def sign_off_judgment(
-    judgment_id: uuid.UUID,
+    judgment_id: str,
     payload: JudgmentSignOff,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),

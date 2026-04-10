@@ -124,13 +124,13 @@ class PreSignSummary(BaseModel):
 
 # ─── Helper ───────────────────────────────────────────────────────────────────
 
-def _compute_signature_hash(session_id: uuid.UUID, partner_user_id: str, signed_at: datetime.datetime) -> str:
+def _compute_signature_hash(session_id: str, partner_user_id: str, signed_at: datetime.datetime) -> str:
     """SHA-256(session_id | partner_id | signed_at_iso) — deterministic, reproducible."""
     raw = f"{session_id}|{partner_user_id}|{signed_at.isoformat()}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def _get_session_or_404(session: AsyncSession, session_id: uuid.UUID) -> SealSession:
+async def _get_session_or_404(session: AsyncSession, session_id: str) -> SealSession:
     obj = (await session.scalars(
         select(SealSession).where(SealSession.id == session_id)
     )).first()
@@ -149,7 +149,7 @@ async def _get_session_or_404(session: AsyncSession, session_id: uuid.UUID) -> S
 )
 async def create_seal_session(
     request: Request,
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     payload: CreateSealSessionRequest,
     db: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
@@ -240,7 +240,7 @@ async def create_seal_session(
     summary="Get the current seal session status and signature progress",
 )
 async def get_seal_session(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     db: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> SealSessionOut:
@@ -264,7 +264,7 @@ async def get_seal_session(
     summary="Pre-sign checklist — what the partner reviews before signing",
 )
 async def get_pre_sign_summary(
-    session_id: uuid.UUID,
+    session_id: str,
     db: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
 ) -> PreSignSummary:
@@ -333,7 +333,7 @@ async def get_pre_sign_summary(
 @limiter.limit("5/minute")
 async def sign_seal_session(
     request: Request,
-    session_id: uuid.UUID,
+    session_id: str,
     payload: SignRequest,
     db: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
@@ -438,8 +438,8 @@ async def sign_seal_session(
     summary="Withdraw a partner signature. Resets session to PENDING.",
 )
 async def withdraw_signature(
-    session_id: uuid.UUID,
-    sig_id: uuid.UUID,
+    session_id: str,
+    sig_id: str,
     payload: WithdrawRequest,
     db: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
@@ -527,7 +527,7 @@ class SealVerifyOut(BaseModel):
     tags=["Multi-Partner Seal Sessions"],
 )
 async def verify_seal(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     db: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({
         ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY

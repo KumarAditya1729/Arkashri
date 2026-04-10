@@ -1,0 +1,183 @@
+{
+  "workflow_id": "inventory_audit_v1",
+  "audit_type": "inventory_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "internal_or_external_auditor",
+    "what": "physical_stock_count_and_records_accuracy",
+    "when": "year_end_or_periodic"
+  },
+  "objective": "Verify physical existence, condition, ownership, and valuation of inventory; ensure stock records are accurate, complete, and compliant with applicable accounting standards (Ind AS 2 / IAS 2).",
+  "scope_fields": [
+    "inventory_locations",
+    "inventory_categories",
+    "valuation_method",
+    "cut_off_date",
+    "consignment_stock",
+    "slow_moving_and_obsolete_items"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Pre-Count Planning",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Obtain inventory count instructions, location list, and warehouse access plan; confirm cut-off date and freeze point procedures.",
+          "owner_role": "Inventory Audit Lead",
+          "outputs": ["Count instruction memo", "Location log"],
+          "evidence": ["Management count instructions", "Warehouse access schedule"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Define sampling strategy: identify high-value items for 100% count, apply statistical sampling to balance, flag slow-moving or obsolete categories.",
+          "owner_role": "Inventory Auditor",
+          "outputs": ["Sampling plan", "High-value item list"],
+          "evidence": ["Inventory master listing", "ABC analysis report"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Physical Count Observation And Testing",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Observe physical stock count: independently recount sampled items, record condition, location, and any discrepancies vs. management count.",
+          "owner_role": "Field Auditor",
+          "outputs": ["Auditor count sheets", "Discrepancy log"],
+          "evidence": ["Signed count tags", "Recount workpaper", "Photographs"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Perform cut-off testing: review last goods received notes (GRNs) and dispatch records around count date to confirm inventory cut-off.",
+          "owner_role": "Inventory Auditor",
+          "outputs": ["Cut-off test workpaper"],
+          "evidence": ["GRN / dispatch register extracts", "Lorry receipts", "GIT (goods in transit) listing"]
+        },
+        {
+          "step_id": "F3",
+          "action": "Assess inventory condition: identify damaged, obsolete, slow-moving, or near-expiry items; obtain management's NRV / write-down estimate.",
+          "owner_role": "Inventory Auditor",
+          "outputs": ["Condition assessment report"],
+          "evidence": ["Age analysis report", "Surveyor report if material", "Management NRV memo"]
+        },
+        {
+          "step_id": "F4",
+          "action": "Reconcile auditor count to stock records (WMS / ERP): investigate variances greater than materiality threshold.",
+          "owner_role": "Senior Inventory Auditor",
+          "outputs": ["Count-to-records reconciliation"],
+          "evidence": ["ERP stock ledger extract", "Variance explanation from warehouse manager"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Valuation Testing And Findings",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Test inventory valuation: recompute selected items at lower of cost and NRV per Ind AS 2; validate FIFO / WAC / Specific Identification method consistency.",
+          "owner_role": "Inventory Audit Manager",
+          "outputs": ["Valuation test workpaper", "Write-down schedule"],
+          "evidence": ["Cost records", "Supplier invoices", "NRV evidence (selling price - cost to sell)"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Compile findings, quantify misstatements, issue management letter for stock discrepancies and valuation adjustments > materiality.",
+          "owner_role": "Inventory Audit Manager",
+          "outputs": ["Audit differences schedule", "Management letter draft"],
+          "evidence": ["Difference workpaper", "Management response"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Sign-Off And Archive",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Obtain final inventory certificate from management and confirm adjusting journal entries are booked before period close.",
+          "owner_role": "Inventory Compliance Officer",
+          "outputs": ["Management inventory certificate", "Adjusting entries confirmation"],
+          "evidence": ["Signed certificate", "Journal voucher listing"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Archive count sheets, reconciliations, and working papers with immutable hash anchor.",
+          "owner_role": "Inventory Audit PMO",
+          "outputs": ["Sealed archive bundle"],
+          "evidence": ["Hash chain manifest", "Working paper index"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Inventory listing (pre-count snapshot from ERP)", "required": true, "source_system": "ERP / WMS"},
+    {"id": "E2", "description": "Physical count sheets signed by auditor and warehouse team", "required": true, "source_system": "Field"},
+    {"id": "E3", "description": "Cut-off GRN and dispatch records around count date", "required": true, "source_system": "ERP"},
+    {"id": "E4", "description": "Age analysis and condition report", "required": true, "source_system": "WMS"},
+    {"id": "E5", "description": "Valuation test workpaper (cost vs NRV)", "required": true, "source_system": "Audit DMS"},
+    {"id": "E6", "description": "Management inventory certificate", "required": true, "source_system": "Management"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Physical Count Reperformance",
+      "method": "Independent Recount",
+      "sample_rule": "100% of items > ₹5 lakh value; statistical sample for remainder",
+      "steps": [
+        "Arrive at warehouse before management count begins.",
+        "Select sample from inventory listing before counts are revealed.",
+        "Independently count sampled items and record findings.",
+        "Compare to management count — escalate differences > 1% by value."
+      ],
+      "pass_condition": "Auditor count agrees to management count within acceptable tolerance or differences are adjusted."
+    },
+    {
+      "script_id": "T2",
+      "name": "Cut-Off Testing",
+      "method": "Document Inspection",
+      "sample_rule": "Last 10 GRNs before and first 10 GRNs after count date; same for dispatches",
+      "steps": [
+        "Obtain last GRN and last dispatch note number before count date.",
+        "Verify that all items received up to and including count date are in opening inventory.",
+        "Confirm items dispatched before count date are excluded from inventory.",
+        "Check goods-in-transit listing for completeness."
+      ],
+      "pass_condition": "No material cut-off error identified; GIT properly classified."
+    },
+    {
+      "script_id": "T3",
+      "name": "NRV / Valuation Test",
+      "method": "Recalculation + Analytical",
+      "sample_rule": "All items flagged slow-moving (>180 days) and top 20 items by value",
+      "steps": [
+        "Obtain selling price evidence (recent price lists / invoices post year-end).",
+        "Deduct estimated cost to complete and sell from selling price to arrive at NRV.",
+        "Compare cost to NRV — confirm lower of cost vs NRV is applied.",
+        "Recalculate write-down and agree to financial statements."
+      ],
+      "pass_condition": "Inventory recorded at lower of cost and NRV; write-down is adequate and supportable."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "Scope, Location Coverage And Count Methodology", "required": true},
+    {"id": "R2", "title": "Physical Count Observations And Discrepancies", "required": true},
+    {"id": "R3", "title": "Cut-Off Analysis", "required": true},
+    {"id": "R4", "title": "Condition And Obsolescence Assessment", "required": true},
+    {"id": "R5", "title": "Valuation Testing Results", "required": true},
+    {"id": "R6", "title": "Adjusting Differences And Management Certificate", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Physical count completed and signed off.", "evidence_required": ["Signed count sheets"]},
+    {"id": "G2", "criteria": "Count-to-records reconciliation completed.", "evidence_required": ["Reconciliation workpaper"]},
+    {"id": "G3", "criteria": "Valuation tested and write-down quantified.", "evidence_required": ["Valuation workpaper"]},
+    {"id": "G4", "criteria": "Management certificate and adjusting entries obtained.", "evidence_required": ["Signed certificate"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Count Accuracy Rate", "formula": "MatchedItems / TotalCountedItems", "target": ">= 0.99"},
+    {"id": "K2", "name": "Inventory Discrepancy Rate", "formula": "DiscrepancyValue / TotalInventoryValue", "target": "<= 0.005"},
+    {"id": "K3", "name": "Obsolescence Coverage", "formula": "ReviewedSlowMovingItems / TotalSlowMovingItems", "target": "= 1.00"}
+  ]
+}

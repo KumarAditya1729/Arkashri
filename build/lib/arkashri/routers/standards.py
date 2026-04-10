@@ -21,7 +21,7 @@ async def list_sa_standards(
 
 @router.post("/engagements/{engagement_id}/sa-checklist")
 async def create_engagement_sa_checklist(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> dict:
@@ -34,7 +34,7 @@ async def create_engagement_sa_checklist(
 
 @router.get("/engagements/{engagement_id}/sa-checklist")
 async def get_engagement_sa_checklist(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> dict:
@@ -61,7 +61,7 @@ class SAChecklistUpdate(BaseModel):
 
 @router.put("/sa-checklist/{item_id}")
 async def update_sa_checklist_item(
-    item_id: uuid.UUID,
+    item_id: str,
     payload: SAChecklistUpdate,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
@@ -87,7 +87,7 @@ async def update_sa_checklist_item(
 
 @router.post("/engagements/{engagement_id}/nfra-package", response_class=Response)
 async def download_nfra_package(
-    engagement_id: uuid.UUID,
+    engagement_id: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
 ):

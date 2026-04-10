@@ -109,7 +109,7 @@ async def list_orchestration_runs(
 
 @router.get("/run/{run_id}", response_model=OrchestrationRunOut)
 async def get_orchestration_run(
-    run_id: uuid.UUID,
+    run_id: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(
         require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})
@@ -123,7 +123,7 @@ async def get_orchestration_run(
 
 @router.post("/run/{run_id}/execute", response_model=OrchestrationExecuteResponse, status_code=status.HTTP_202_ACCEPTED)
 async def execute_orchestration_run(
-    run_id: uuid.UUID,
+    run_id: str,
     payload: OrchestrationExecuteRequest,
     request: Request,
     session: AsyncSession = Depends(get_session),

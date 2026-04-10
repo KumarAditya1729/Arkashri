@@ -127,6 +127,10 @@ class EngagementType(str, enum.Enum):
     PAYROLL_AUDIT          = "PAYROLL_AUDIT"
     QUALITY_AUDIT          = "QUALITY_AUDIT"
     SINGLE_AUDIT           = "SINGLE_AUDIT"
+    # Practitioner Core — Cost, Social & Inventory
+    COST_AUDIT             = "COST_AUDIT"
+    SOCIAL_AUDIT           = "SOCIAL_AUDIT"
+    INVENTORY_AUDIT        = "INVENTORY_AUDIT"
 
 
 class SealSessionStatus(str, enum.Enum):

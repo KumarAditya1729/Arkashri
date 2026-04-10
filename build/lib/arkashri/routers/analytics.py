@@ -9,13 +9,60 @@ from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 
 from arkashri.services.ml_analytics import ml_analytics_service
-from arkashri.dependencies import get_current_user
+from arkashri.services.ai_fabric import generate_contextual_insight
+from arkashri.dependencies import get_current_user, get_session
+from arkashri.models import Engagement, RiskEntry
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter()
+
+@router.get("/contextual-lens")
+async def get_contextual_lens(
+    engagement_id: str,
+    current_stage: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: Dict = Depends(get_current_user)
+):
+    """Generates dynamic AI advice for the frontend Assistant sidebar."""
+    try:
+        # Fetch high-level engagement details to guide the AI
+        engagement = await session.get(Engagement, engagement_id)
+        if not engagement:
+            raise HTTPException(status_code=404, detail="Engagement not found")
+            
+        # Optional: Count risks for context
+        # (Using a simple query if you want active risk counts, etc.)
+        risk_count_query = await session.execute(
+            select(func.count(RiskEntry.id)).where(RiskEntry.engagement_id == engagement_id)
+        )
+        total_risks = risk_count_query.scalar_one_or_none() or 0
+
+        context_data = {
+            "client_name": engagement.client_name,
+            "status": engagement.status.name if hasattr(engagement.status, 'name') else str(engagement.status),
+            "total_recorded_risks": total_risks,
+            "jurisdiction": engagement.jurisdiction
+        }
+
+        # Invoke the AI service
+        insight = await generate_contextual_insight(
+            engagement_id=str(engagement.id),
+            current_stage=current_stage,
+            audit_type=engagement.engagement_type.name if hasattr(engagement.engagement_type, 'name') else str(engagement.engagement_type),
+            context_data=context_data
+        )
+        return insight
+
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (e.g., 404) unchanged
+    except Exception as e:
+        logger.error("contextual_lens_api_error", error=str(e), user_id=current_user.get("id"))
+        raise HTTPException(status_code=500, detail=f"Failed to generate contextual insight: {str(e)}")
 
 class AuditDataRequest(BaseModel):
     """Request model for audit pattern analysis"""

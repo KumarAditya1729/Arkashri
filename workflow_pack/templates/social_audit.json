@@ -1,0 +1,183 @@
+{
+  "workflow_id": "social_audit_v1",
+  "audit_type": "social_audit",
+  "version": "1.0.0",
+  "classification": {
+    "who": "social_auditor_or_ngo_auditor",
+    "what": "csr_social_impact_and_community_program_verification",
+    "when": "annual_or_program_completion"
+  },
+  "objective": "Evaluate the actual social impact of CSR programs, government schemes, and community interventions; verify fund utilisation, beneficiary reach, and stakeholder outcomes against declared objectives.",
+  "scope_fields": [
+    "csr_policy_in_scope",
+    "programs_and_schemes",
+    "beneficiary_categories",
+    "fund_allocated_and_spent",
+    "implementation_partners",
+    "reporting_framework"
+  ],
+  "phases": [
+    {
+      "phase_id": "plan",
+      "name": "Engagement Setup And CSR Policy Review",
+      "steps": [
+        {
+          "step_id": "P1",
+          "action": "Review CSR policy, board-approved activities, Section 135 applicability, and implementation structure.",
+          "owner_role": "Social Audit Lead",
+          "outputs": ["CSR policy review memo", "Program inventory"],
+          "evidence": ["Board CSR resolution", "Annual CSR report", "Implementing agency agreements"]
+        },
+        {
+          "step_id": "P2",
+          "action": "Define sampling strategy: select programs for field-level beneficiary verification and fund tracing.",
+          "owner_role": "Social Audit Lead",
+          "outputs": ["Audit sampling plan"],
+          "evidence": ["Program budget allocations", "Geographic coverage maps"]
+        }
+      ]
+    },
+    {
+      "phase_id": "fieldwork",
+      "name": "Fund Verification And Beneficiary Assessment",
+      "steps": [
+        {
+          "step_id": "F1",
+          "action": "Trace CSR fund flow from company to implementing agencies to end use — verify bank transfers, utilisation certificates, and receipts.",
+          "owner_role": "Social Auditor",
+          "outputs": ["Fund flow verification workpaper"],
+          "evidence": ["Bank statements", "Utilisation certificates", "Invoices from implementing agency"]
+        },
+        {
+          "step_id": "F2",
+          "action": "Conduct beneficiary verification: compare registered beneficiary list to actual recipients via direct interviews, records, and community meetings.",
+          "owner_role": "Field Auditor",
+          "outputs": ["Beneficiary verification report", "Interview logs"],
+          "evidence": ["Beneficiary registers", "Interview transcripts", "Photographs with GPS metadata"]
+        },
+        {
+          "step_id": "F3",
+          "action": "Assess program outcomes: compare declared targets (reach, deliverables) vs. actual outcomes; test quality of services/assets delivered.",
+          "owner_role": "Social Auditor",
+          "outputs": ["Outcome gap analysis"],
+          "evidence": ["Program progress reports", "Physical inspection notes", "Third-party impact study"]
+        },
+        {
+          "step_id": "F4",
+          "action": "Test compliance with scheduled activities, timelines, and procurement processes of implementing agencies.",
+          "owner_role": "Social Auditor",
+          "outputs": ["Compliance testing workpaper"],
+          "evidence": ["Procurement records", "Activity logs", "Milestone trackers"]
+        }
+      ]
+    },
+    {
+      "phase_id": "report",
+      "name": "Impact Assessment And Findings",
+      "steps": [
+        {
+          "step_id": "R1",
+          "action": "Prepare stakeholder workshop or community hearing: present preliminary findings, gather community feedback and grievances.",
+          "owner_role": "Social Audit Manager",
+          "outputs": ["Community feedback record", "Grievance log"],
+          "evidence": ["Meeting minutes", "Attendance records", "Submitted grievances"]
+        },
+        {
+          "step_id": "R2",
+          "action": "Compile final social audit report: fund utilisation summary, outcome vs. target, key findings, and improvement recommendations.",
+          "owner_role": "Social Audit Manager",
+          "outputs": ["Social Audit Report", "Management response"],
+          "evidence": ["Report sign-off", "Board presentation deck"]
+        }
+      ]
+    },
+    {
+      "phase_id": "close",
+      "name": "Disclosure And Archive",
+      "steps": [
+        {
+          "step_id": "C1",
+          "action": "Ensure CSR audit report is disclosed in Annual Report and filed with MCA under Schedule VII / Section 135 requirements.",
+          "owner_role": "CSR Compliance Officer",
+          "outputs": ["Annual report disclosure proof", "MCA filing if applicable"],
+          "evidence": ["Annual report extract", "Regulatory filing receipt"]
+        },
+        {
+          "step_id": "C2",
+          "action": "Archive all field evidence, beneficiary records, and working papers with immutable hash anchor.",
+          "owner_role": "Social Audit PMO",
+          "outputs": ["Evidence archive manifest"],
+          "evidence": ["Hash chain entry", "Archive index"]
+        }
+      ]
+    }
+  ],
+  "evidence_checklist": [
+    {"id": "E1", "description": "Board CSR resolution and policy document", "required": true, "source_system": "Governance Records"},
+    {"id": "E2", "description": "Fund release and utilisation documentation", "required": true, "source_system": "Finance / Bank"},
+    {"id": "E3", "description": "Beneficiary registers and field verification records", "required": true, "source_system": "Implementing Agency"},
+    {"id": "E4", "description": "Program deliverable tracking and milestone records", "required": true, "source_system": "CSR MIS"},
+    {"id": "E5", "description": "Community feedback and grievance records", "required": true, "source_system": "Field Notes"},
+    {"id": "E6", "description": "Annual Report CSR section disclosure", "required": true, "source_system": "Company Secretarial"}
+  ],
+  "test_scripts": [
+    {
+      "script_id": "T1",
+      "name": "Fund Flow Trace",
+      "method": "Substantive Vouching",
+      "sample_rule": "100% of implementing agency payment disbursements",
+      "steps": [
+        "Agree each payment to board CSR approval and program budget.",
+        "Verify bank transfer to implementing agency and utilisation certificate.",
+        "Trace a sample to end-use invoices or asset creation at beneficiary level.",
+        "Flag un-utilised or diverted funds for escalation."
+      ],
+      "pass_condition": "100% of CSR funds traced to approved programs with supported utilisation."
+    },
+    {
+      "script_id": "T2",
+      "name": "Beneficiary Reach Verification",
+      "method": "Direct Verification + Statistical Sampling",
+      "sample_rule": "Systematic random sample, minimum 10% of total beneficiary list",
+      "steps": [
+        "Select beneficiary sample from official register.",
+        "Conduct direct interviews or home visits to confirm benefit receipt.",
+        "Cross-check against alternative data sources (attendance, ration, records).",
+        "Calculate verified reach rate vs. declared reach."
+      ],
+      "pass_condition": "Verified reach rate matches declared reach within 5% tolerance."
+    },
+    {
+      "script_id": "T3",
+      "name": "Outcome vs. Target Testing",
+      "method": "Analytical Procedure",
+      "sample_rule": "All programs above materiality threshold",
+      "steps": [
+        "Extract declared targets from CSR plan.",
+        "Obtain actual outcome data from implementing agency MIS.",
+        "Compute target achievement ratio per program.",
+        "Identify programs below 80% target achievement for deep-dive."
+      ],
+      "pass_condition": "All material programs achieve >= 80% of declared targets or have documented remediation plan."
+    }
+  ],
+  "report_sections": [
+    {"id": "R1", "title": "CSR Program Inventory And Policy Review", "required": true},
+    {"id": "R2", "title": "Fund Utilisation And Flow Verification", "required": true},
+    {"id": "R3", "title": "Beneficiary Reach And Verification", "required": true},
+    {"id": "R4", "title": "Outcome And Impact Assessment", "required": true},
+    {"id": "R5", "title": "Community Feedback And Grievances", "required": true},
+    {"id": "R6", "title": "Recommendations And Management Response", "required": true}
+  ],
+  "closure_gates": [
+    {"id": "G1", "criteria": "Board CSR approval and program scope confirmed.", "evidence_required": ["Board resolution"]},
+    {"id": "G2", "criteria": "Fund flow fully traced and utilisation verified.", "evidence_required": ["Utilisation certificates"]},
+    {"id": "G3", "criteria": "Beneficiary verification sample completed.", "evidence_required": ["Verification records"]},
+    {"id": "G4", "criteria": "Report disclosed in Annual Report.", "evidence_required": ["Annual report extract"]}
+  ],
+  "kpis": [
+    {"id": "K1", "name": "Fund Utilisation Rate", "formula": "UtilisedFunds / AllocatedFunds", "target": ">= 0.95"},
+    {"id": "K2", "name": "Beneficiary Reach Rate", "formula": "VerifiedBeneficiaries / DeclaredBeneficiaries", "target": ">= 0.90"},
+    {"id": "K3", "name": "Program Target Achievement", "formula": "AchievedOutcomes / PlannedOutcomes", "target": ">= 0.80"}
+  ]
+}

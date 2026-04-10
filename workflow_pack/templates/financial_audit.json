@@ -44,6 +44,21 @@
       "name": "Control And Substantive Testing",
       "steps": [
         {
+          "step_id": "GC1",
+          "action": "Perform SA 570 Going Concern assessment: compute Altman Z-Score, Piotroski F-Score, liquidity/solvency ratios, and OCF burn analysis. Evaluate management's 12-month viability plan. Auto-flag ProfessionalJudgment if HIGH or MEDIUM risk.",
+          "owner_role": "Audit Manager",
+          "automation_mode": "deterministic_llm",
+          "outputs": ["Going concern risk assessment", "SA 570 distress signal report"],
+          "evidence": [
+            "Trial balance and P&L extract",
+            "Cash flow statement (3 years)",
+            "Management going concern plan",
+            "Covenant compliance certificate",
+            "Board minutes on going concern"
+          ],
+          "requires_approval": false
+        },
+        {
           "step_id": "F1",
           "action": "Test design and operating effectiveness of key financial reporting controls.",
           "owner_role": "Senior Auditor",
@@ -59,6 +74,7 @@
         }
       ]
     },
+
     {
       "phase_id": "report",
       "name": "Conclusion And Reporting",
