@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
+const nextConfig = {
   output: "standalone",   // Required for Docker 3-stage build
   eslint: {
     ignoreDuringBuilds: true,
@@ -8,6 +8,6 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-};
+} satisfies Record<string, unknown>;
 
-export default nextConfig;
+export default nextConfig as NextConfig;

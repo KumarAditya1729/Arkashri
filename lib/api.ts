@@ -26,7 +26,7 @@ function buildHeaders(extra: Record<string, string> = {}): Record<string, string
     }
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const isFormData = init?.body instanceof FormData
     const h = isFormData
         ? { 'X-Arkashri-Tenant': TENANT }
@@ -103,6 +103,7 @@ export interface EngagementResponse {
     sealed_at: string | null
     seal_hash: string | null
     created_at: string
+    standards_framework: string
 }
 
 export interface EngagementCreate {
@@ -222,6 +223,133 @@ export interface RegulatoryDoc {
     is_promoted: boolean
     ingested_at: string
     content: string | null
+}
+
+export interface RegulatoryDiffResponse {
+    doc_id_a: number
+    doc_id_b: number
+    diff_text: string
+    additions: number
+    deletions: number
+}
+
+// ─── Controls Types ───────────────────────────────────────────────────────────
+
+export type ControlStatus = 'EFFECTIVE' | 'DEFICIENT' | 'NOT_TESTED' | 'COMPENSATING'
+export type ControlType = 'PREVENTIVE' | 'DETECTIVE' | 'CORRECTIVE'
+
+export interface ControlCreate {
+    title: string
+    area: string
+    control_type: ControlType
+    frequency?: string
+    owner?: string
+    risk_id?: string
+}
+
+export interface ControlOut {
+    id: string
+    engagement_id: string
+    title: string
+    area: string
+    control_type: ControlType
+    frequency: string | null
+    owner: string | null
+    risk_id: string | null
+    status: ControlStatus
+    last_tested: string | null
+    created_at: string
+}
+
+// ─── Planning / Phase Types ───────────────────────────────────────────────────
+
+export type PhaseStatus = 'UPCOMING' | 'IN_PROGRESS' | 'COMPLETED'
+
+export interface PhaseCreate {
+    name: string
+    status: PhaseStatus
+    owner?: string
+    progress?: number
+    start_date?: string
+    end_date?: string
+}
+
+export interface PhaseOut {
+    id: string
+    engagement_id: string
+    name: string
+    status: PhaseStatus
+    owner: string | null
+    progress: number | null
+    start_date: string | null
+    end_date: string | null
+    created_at: string
+}
+
+export interface TeamMemberCreate {
+    name: string
+    role: string
+    initials?: string
+    color?: string
+}
+
+export interface TeamMemberOut {
+    id: string
+    engagement_id: string
+    name: string
+    role: string
+    initials: string | null
+    color: string | null
+    created_at: string
+}
+
+// ─── Blockchain / Multi-Chain Types ───────────────────────────────────────────
+
+export interface MultiChainNetworkStatus {
+    connected: boolean
+    network: string
+    block_number: number
+    gas_price?: string
+    network_id?: number
+    latest_block_hash?: string
+    error?: string
+}
+
+export interface AnchorMultiChainResponse {
+    id: string
+    evidence_hash: string
+    networks_anchored: string[]
+    anchoring_timestamp: string
+    verification_urls: Record<string, string>
+    multi_chain_hash: string
+}
+
+export interface AnchoredEvidenceListResponse {
+    anchored_evidence: {
+        id: string
+        evidence_hash: string
+        networks_anchored: string[]
+        timestamp?: string
+        anchoring_timestamp?: string
+        verification_urls?: Record<string, string>
+        multi_chain_hash: string
+    }[]
+}
+
+export interface VerifyMultiChainResponse {
+    overall_verified: boolean
+    multi_chain_consensus: boolean
+    network_results: Record<string, { verified: boolean; tx_reference?: string }>
+}
+
+// ─── Audit Run Types ──────────────────────────────────────────────────────────
+
+export interface AuditRunOut {
+    id: string
+    engagement_id: string
+    status: string
+    started_at: string
+    completed_at: string | null
 }
 
 // ─── API Functions ────────────────────────────────────────────────────────────
@@ -348,6 +476,115 @@ export async function promoteRegulatoryDoc(docId: number): Promise<void> {
     })
 }
 
+export async function diffRegulatoryDocs(docIdA: number, docIdB: number): Promise<RegulatoryDiffResponse> {
+    return apiFetch<RegulatoryDiffResponse>(`/api/v1/regulatory/updates/diff/${docIdA}/${docIdB}`)
+}
+
+// ─── Controls API ─────────────────────────────────────────────────────────────
+
+export async function listControls(engagementUuid: string): Promise<ControlOut[]> {
+    try {
+        return await apiFetch<ControlOut[]>(`/api/v1/engagements/${engagementUuid}/controls`)
+    } catch {
+        return []
+    }
+}
+
+export async function createControl(engagementUuid: string, payload: ControlCreate): Promise<ControlOut> {
+    return apiFetch<ControlOut>(`/api/v1/engagements/${engagementUuid}/controls`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    })
+}
+
+export async function updateControlStatus(
+    engagementUuid: string,
+    controlId: string,
+    payload: { status: ControlStatus },
+): Promise<ControlOut> {
+    return apiFetch<ControlOut>(`/api/v1/engagements/${engagementUuid}/controls/${controlId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+    })
+}
+
+// ─── Planning / Phases API ────────────────────────────────────────────────────
+
+export async function listPhases(engagementUuid: string): Promise<PhaseOut[]> {
+    try {
+        return await apiFetch<PhaseOut[]>(`/api/v1/engagements/${engagementUuid}/phases`)
+    } catch {
+        return []
+    }
+}
+
+export async function createPhase(engagementUuid: string, payload: PhaseCreate): Promise<PhaseOut> {
+    return apiFetch<PhaseOut>(`/api/v1/engagements/${engagementUuid}/phases`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    })
+}
+
+export async function listTeamMembers(engagementUuid: string): Promise<TeamMemberOut[]> {
+    try {
+        return await apiFetch<TeamMemberOut[]>(`/api/v1/engagements/${engagementUuid}/team`)
+    } catch {
+        return []
+    }
+}
+
+export async function addTeamMember(engagementUuid: string, payload: TeamMemberCreate): Promise<TeamMemberOut> {
+    return apiFetch<TeamMemberOut>(`/api/v1/engagements/${engagementUuid}/team`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    })
+}
+
+// ─── Audit Runs API ───────────────────────────────────────────────────────────
+
+export async function listAuditRuns(engagementUuid: string): Promise<AuditRunOut[]> {
+    // Orchestration runs are scoped by tenant+jurisdiction, not engagement ID directly.
+    // We do a best-effort fetch using the default tenant and IN jurisdiction.
+    try {
+        const TENANT_ID = process.env.NEXT_PUBLIC_API_TENANT ?? 'default_tenant'
+        return await apiFetch<AuditRunOut[]>(`/api/v1/orchestration/runs/${TENANT_ID}/IN`)
+    } catch {
+        return []
+    }
+}
+
+// ─── Multi-Chain Blockchain API ───────────────────────────────────────────────
+
+export async function getMultiChainStatus(): Promise<Record<string, MultiChainNetworkStatus>> {
+    try {
+        return await apiFetch<Record<string, MultiChainNetworkStatus>>('/api/v1/multi-chain/networks/status')
+    } catch {
+        return {}
+    }
+}
+
+export async function getAnchoredEvidence(): Promise<AnchoredEvidenceListResponse> {
+    try {
+        return await apiFetch<AnchoredEvidenceListResponse>('/api/v1/multi-chain/anchored/evidence')
+    } catch {
+        return { anchored_evidence: [] }
+    }
+}
+
+export async function anchorMultiChainEvidence(
+    evidenceHash: string,
+    metadata?: Record<string, string>,
+): Promise<AnchorMultiChainResponse> {
+    return apiFetch<AnchorMultiChainResponse>('/api/v1/multi-chain/anchor', {
+        method: 'POST',
+        body: JSON.stringify({ evidence_hash: evidenceHash, metadata: metadata ?? {} }),
+    })
+}
+
+export async function verifyMultiChainEvidence(evidenceHash: string): Promise<VerifyMultiChainResponse> {
+    return apiFetch<VerifyMultiChainResponse>(`/api/v1/multi-chain/verify/${evidenceHash}`)
+}
+
 // ─── Automation Score Types ───────────────────────────────────────────────────
 
 export interface AutomationDimension {
@@ -451,7 +688,7 @@ export async function createSealSession(
     requiredSignatures = 2,
     createdBy = 'system',
 ): Promise<SealSessionOut> {
-    return apiFetch<SealSessionOut>(`/v1/engagements/${engagementUuid}/seal-session`, {
+    return apiFetch<SealSessionOut>(`/api/v1/engagements/${engagementUuid}/seal-session`, {
         method: 'POST',
         body: JSON.stringify({ required_signatures: requiredSignatures, created_by: createdBy }),
     })
@@ -459,7 +696,7 @@ export async function createSealSession(
 
 export async function getSealSession(engagementUuid: string): Promise<SealSessionOut | null> {
     try {
-        return await apiFetch<SealSessionOut>(`/v1/engagements/${engagementUuid}/seal-session`)
+        return await apiFetch<SealSessionOut>(`/api/v1/engagements/${engagementUuid}/seal-session`)
     } catch {
         return null
     }
@@ -467,7 +704,7 @@ export async function getSealSession(engagementUuid: string): Promise<SealSessio
 
 export async function getPreSignSummary(sessionId: string): Promise<PreSignSummary | null> {
     try {
-        return await apiFetch<PreSignSummary>(`/v1/seal-sessions/${sessionId}/pre-sign-summary`)
+        return await apiFetch<PreSignSummary>(`/api/v1/seal-sessions/${sessionId}/pre-sign-summary`)
     } catch {
         return null
     }
@@ -482,7 +719,7 @@ export async function signSealSession(
     overrideCountAcknowledged = 0,
     jurisdiction = 'IN',
 ): Promise<SealSessionOut> {
-    return apiFetch<SealSessionOut>(`/v1/seal-sessions/${sessionId}/sign`, {
+    return apiFetch<SealSessionOut>(`/api/v1/seal-sessions/${sessionId}/sign`, {
         method: 'POST',
         body: JSON.stringify({
             partner_user_id: partnerUserId,
@@ -500,11 +737,12 @@ export async function withdrawSignature(
     signatureId: string,
     withdrawalReason: string,
 ): Promise<SealSessionOut> {
-    return apiFetch<SealSessionOut>(`/v1/seal-sessions/${sessionId}/signatures/${signatureId}`, {
+    return apiFetch<SealSessionOut>(`/api/v1/seal-sessions/${sessionId}/signatures/${signatureId}`, {
         method: 'DELETE',
         body: JSON.stringify({ withdrawal_reason: withdrawalReason }),
     })
 }
+
 export async function getAdminEvidenceLedger(): Promise<EvidenceLedgerEntry[]> {
-    return apiFetch<EvidenceLedgerEntry[]>("/v1/admin/evidence-ledger");
+    return apiFetch<EvidenceLedgerEntry[]>('/api/v1/admin/evidence-ledger')
 }
