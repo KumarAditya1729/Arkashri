@@ -5,6 +5,7 @@ Provides AI-powered insights and predictive analytics
 """
 from __future__ import annotations
 
+import uuid
 from typing import Dict, List, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
@@ -30,15 +31,18 @@ async def get_contextual_lens(
 ):
     """Generates dynamic AI advice for the frontend Assistant sidebar."""
     try:
+        try:
+            eid = uuid.UUID(engagement_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
         # Fetch high-level engagement details to guide the AI
-        engagement = await session.get(Engagement, engagement_id)
+        engagement = await session.get(Engagement, eid)
         if not engagement:
             raise HTTPException(status_code=404, detail="Engagement not found")
             
-        # Optional: Count risks for context
-        # (Using a simple query if you want active risk counts, etc.)
+        # Count risks for context
         risk_count_query = await session.execute(
-            select(func.count(RiskEntry.id)).where(RiskEntry.engagement_id == engagement_id)
+            select(func.count(RiskEntry.id)).where(RiskEntry.engagement_id == eid)
         )
         total_risks = risk_count_query.scalar_one_or_none() or 0
 

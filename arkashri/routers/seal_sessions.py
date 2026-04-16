@@ -17,6 +17,7 @@ Gate logic:
 from __future__ import annotations
 
 import hashlib
+import uuid
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
@@ -154,7 +155,11 @@ async def create_seal_session(
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> SealSessionOut:
     # Ensure engagement exists and is not already sealed
-    eng = (await db.scalars(select(Engagement).where(Engagement.id == engagement_id))).first()
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(422, "Invalid engagement_id UUID format.")
+    eng = (await db.scalars(select(Engagement).where(Engagement.id == eid))).first()
     if not eng:
         raise HTTPException(404, "Engagement not found.")
     if eng.sealed_at:
@@ -165,7 +170,7 @@ async def create_seal_session(
     # Prevent duplicate active sessions
     existing = (await db.scalars(
         select(SealSession).where(
-            SealSession.engagement_id == engagement_id,
+            SealSession.engagement_id == eid,
             SealSession.status.not_in([SealSessionStatus.WITHDRAWN]),
         )
     )).first()
@@ -175,7 +180,7 @@ async def create_seal_session(
     # Capture opinion snapshot at session creation time
     opinion = (await db.scalars(
         select(AuditOpinion)
-        .where(AuditOpinion.engagement_id == engagement_id)
+        .where(AuditOpinion.engagement_id == eid)
         .order_by(AuditOpinion.created_at.desc())
     )).first()
     if not opinion:
@@ -197,7 +202,7 @@ async def create_seal_session(
     }
 
     sess = SealSession(
-        engagement_id=engagement_id,
+        engagement_id=eid,
         required_signatures=payload.required_signatures,
         current_signature_count=0,
         status=SealSessionStatus.PENDING,
@@ -243,9 +248,13 @@ async def get_seal_session(
     db: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> SealSessionOut:
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(422, "Invalid engagement_id UUID format.")
     sess = (await db.scalars(
         select(SealSession).where(
-            SealSession.engagement_id == engagement_id,
+            SealSession.engagement_id == eid,
             SealSession.status.not_in([SealSessionStatus.WITHDRAWN]),
         )
     )).first()
