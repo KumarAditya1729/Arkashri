@@ -47,7 +47,11 @@ async def list_controls(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> list[ControlOut]:
-    stmt = select(ControlEntry).where(ControlEntry.engagement_id == engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    stmt = select(ControlEntry).where(ControlEntry.engagement_id == eid)
     return [ControlOut.model_validate(x) for x in await session.scalars(stmt)]
 
 
@@ -58,13 +62,17 @@ async def create_control(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> ControlOut:
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
     # Verify engagement exists
-    engagement = await session.get(Engagement, engagement_id)
+    engagement = await session.get(Engagement, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
     entry = ControlEntry(
-        engagement_id = engagement_id,
+        engagement_id = eid,
         risk_id       = uuid.UUID(payload.risk_id) if payload.risk_id else None,
         title         = payload.title,
         area          = payload.area,
@@ -87,8 +95,13 @@ async def update_control_status(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> ControlOut:
-    entry = await session.get(ControlEntry, control_id)
-    if not entry or str(entry.engagement_id) != engagement_id:
+    try:
+        eid = uuid.UUID(engagement_id)
+        cid = uuid.UUID(control_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID")
+    entry = await session.get(ControlEntry, cid)
+    if not entry or entry.engagement_id != eid:
         raise HTTPException(status_code=404, detail="Control not found")
     
     entry.status = payload.status

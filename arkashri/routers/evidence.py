@@ -66,7 +66,11 @@ async def list_evidence(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> list[EvidenceRecord]:
-    stmt = select(EvidenceRecord).where(EvidenceRecord.engagement_id == engagement_id).order_by(EvidenceRecord.uploaded_at.desc())
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    stmt = select(EvidenceRecord).where(EvidenceRecord.engagement_id == eid).order_by(EvidenceRecord.uploaded_at.desc())
     return list(await session.scalars(stmt))
 
 
@@ -78,7 +82,11 @@ async def upload_evidence(
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> EvidenceRecord:
-    engagement = await session.get(Engagement, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await session.get(Engagement, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
@@ -103,7 +111,7 @@ async def upload_evidence(
 
     # Count existing for ref numbering
     count = len(list(await session.scalars(
-        select(EvidenceRecord).where(EvidenceRecord.engagement_id == engagement_id)
+        select(EvidenceRecord).where(EvidenceRecord.engagement_id == eid)
     )))
 
     # Save file to disk via LocalStorageBackend
@@ -120,7 +128,7 @@ async def upload_evidence(
         ev_type = "Document"
 
     record = EvidenceRecord(
-        engagement_id = engagement_id,
+        engagement_id = eid,
         tenant_id     = engagement.tenant_id,
         evd_ref       = f"EVD-{count + 1:03d}",
         file_name     = fname,
@@ -144,8 +152,13 @@ async def delete_evidence(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> None:
-    record = await session.get(EvidenceRecord, evidence_id)
-    if not record or record.engagement_id != engagement_id:
+    try:
+        eid = uuid.UUID(engagement_id)
+        evd_id = uuid.UUID(evidence_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID")
+    record = await session.get(EvidenceRecord, evd_id)
+    if not record or record.engagement_id != eid:
         raise HTTPException(status_code=404, detail="Evidence not found")
     await session.delete(record)
     await session.commit()

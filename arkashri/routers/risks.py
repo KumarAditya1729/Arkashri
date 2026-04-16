@@ -5,6 +5,7 @@ Wires the frontend Risk Register page to Postgres.
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -67,7 +68,11 @@ async def list_risks(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> list[RiskOut]:
-    stmt = select(RiskEntry).where(RiskEntry.engagement_id == engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    stmt = select(RiskEntry).where(RiskEntry.engagement_id == eid)
     if risk_status:
         stmt = stmt.where(RiskEntry.risk_status == risk_status) # type: ignore
     stmt = stmt.order_by(RiskEntry.risk_score.desc())
@@ -81,19 +86,24 @@ async def create_risk(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> RiskOut:
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+
     # Verify engagement exists
-    engagement = await session.get(Engagement, engagement_id)
+    engagement = await session.get(Engagement, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
     # Auto-generate RSK ref
     count_stmt = select(func.count()).select_from(
-        select(RiskEntry.id).where(RiskEntry.engagement_id == engagement_id).subquery()
+        select(RiskEntry.id).where(RiskEntry.engagement_id == eid).subquery()
     )
     count = (await session.scalar(count_stmt)) or 0
 
     entry = RiskEntry(
-        engagement_id = engagement_id,
+        engagement_id = eid,
         tenant_id     = engagement.tenant_id,
         risk_ref      = f"RSK-{count + 1:03d}",
         title         = payload.title,
@@ -119,8 +129,13 @@ async def update_risk_status(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
 ) -> RiskOut:
-    entry = await session.get(RiskEntry, risk_id)
-    if not entry or entry.engagement_id != engagement_id:
+    try:
+        eid = uuid.UUID(engagement_id)
+        rid = uuid.UUID(risk_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID")
+    entry = await session.get(RiskEntry, rid)
+    if not entry or entry.engagement_id != eid:
         raise HTTPException(status_code=404, detail="Risk not found")
     entry.risk_status = payload.status # type: ignore
     entry.updated_at = datetime.now(timezone.utc) # type: ignore
