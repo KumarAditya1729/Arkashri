@@ -103,14 +103,16 @@ if _TRACING_ENABLED:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Parse REDIS_URL: redis://host:port/db  →  host + port
-    redis_url = settings.redis_url  # e.g. redis://redis:6379/0
-    try:
-        parts = redis_url.replace("redis://", "").split(":")
-        redis_host = parts[0]
-        redis_port = int(parts[1].split("/")[0]) if len(parts) > 1 else 6379
+    redis_url = settings.redis_url  # e.g. redis://default:pass@redis:6379/0
+    redis_pool = None
+    if redis_url:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(redis_url)
+        redis_host = parsed.hostname or "localhost"
+        redis_port = parsed.port or 6379
         
-        # Initialize ARQ Pool
-        app.state.redis_pool = await create_pool(
+        try:
+            app.state.redis_pool = await create_pool(
             RedisSettings(host=redis_host, port=redis_port)
         )
         logger.info("Connected to Redis ARQ pool", host=redis_host, port=redis_port)
