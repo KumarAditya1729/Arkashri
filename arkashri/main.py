@@ -110,10 +110,17 @@ async def lifespan(app: FastAPI):
         parsed = urllib.parse.urlparse(redis_url)
         redis_host = parsed.hostname or "localhost"
         redis_port = parsed.port or 6379
+        redis_password = parsed.password or None
+        redis_username = parsed.username or None
         
         try:
             app.state.redis_pool = await create_pool(
-                RedisSettings(host=redis_host, port=redis_port)
+                RedisSettings(
+                    host=redis_host,
+                    port=redis_port,
+                    password=redis_password,
+                    username=redis_username,
+                )
             )
             logger.info("Connected to Redis ARQ pool", host=redis_host, port=redis_port)
             
