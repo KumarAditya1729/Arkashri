@@ -9,7 +9,7 @@ import asyncio
 import gzip
 import hashlib
 import time
-from typing import Dict, Optional, Tuple, Any
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import redis.asyncio as redis
@@ -81,7 +81,7 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
         # Cache response if eligible — silently skip on error
         if self._should_cache_response(request, response):
             try:
-                await self._cache_response(cache_key, response, processing_time)
+                await self._cache_response(request, cache_key, response, processing_time)
                 performance_logger.log_cache_operation("set", cache_key)
             except Exception:
                 pass
@@ -172,7 +172,7 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
         
         return True
     
-    async def _cache_response(self, cache_key: str, response: Response, processing_time: float):
+    async def _cache_response(self, request: Request, cache_key: str, response: Response, processing_time: float):
         """Cache response data"""
         if not self._redis:
             await self._connect_redis()

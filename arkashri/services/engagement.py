@@ -74,7 +74,7 @@ async def create_engagement(session: AsyncSession, payload: EngagementCreate) ->
     docs = await session.scalars(
         select(RegulatoryDocument)
         .where(RegulatoryDocument.jurisdiction == payload.jurisdiction)
-        .where(RegulatoryDocument.is_promoted == True)
+        .where(RegulatoryDocument.is_promoted.is_(True))
     )
     
     sa_versions = {}

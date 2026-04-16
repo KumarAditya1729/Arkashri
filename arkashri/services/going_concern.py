@@ -27,7 +27,6 @@ SA 570 Para References used:
 """
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from dataclasses import dataclass, asdict
@@ -281,10 +280,8 @@ def compute_piotroski_f_score(f: GoingConcernFinancials) -> PiotroskiResult:
     criteria["F4_cash_earnings_quality"] = accruals
 
     # F5 — Leverage decreased (long-term debt to assets lower than prior)
-    # Using total_debt / total_assets as proxy
-    leverage: bool | None = None
-    current_lev = _safe_div(f.long_term_debt or f.total_debt, f.total_assets)
     # Without prior year leverage we cannot compare — flag as None
+    leverage: bool | None = None
     criteria["F5_leverage_decreased"] = leverage  # conservative: None if no prior data
 
     # F6 — Current ratio > 1 (liquidity improved)
@@ -406,9 +403,9 @@ def compute_cash_flow_analysis(f: GoingConcernFinancials) -> CashFlowResult:
     consecutive_negative = len(negative_ocf_years)
 
     if consecutive_negative >= 3:
-        signals.append(f"OCF_NEGATIVE_3_CONSECUTIVE_YEARS — Persistent cash burn [SA 570 Para 16(a)]")
+        signals.append("OCF_NEGATIVE_3_CONSECUTIVE_YEARS — Persistent cash burn [SA 570 Para 16(a)]")
     elif consecutive_negative == 2:
-        signals.append(f"OCF_NEGATIVE_2_CONSECUTIVE_YEARS — Accelerating cash burn [SA 570 Para 16(a)]")
+        signals.append("OCF_NEGATIVE_2_CONSECUTIVE_YEARS — Accelerating cash burn [SA 570 Para 16(a)]")
     elif consecutive_negative == 1 and f.operating_cash_flow is not None and f.operating_cash_flow < 0:
         signals.append("OCF_NEGATIVE_CURRENT_YEAR — Operations consuming cash [SA 570 Para 16(a)]")
 

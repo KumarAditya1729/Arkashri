@@ -18,7 +18,6 @@ so the integration can be demoed without a live ERP instance.
 from __future__ import annotations
 
 import time
-import uuid
 import datetime
 import random
 from typing import Literal

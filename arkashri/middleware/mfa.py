@@ -7,8 +7,7 @@ from __future__ import annotations
 
 import base64
 import secrets
-import time
-from typing import Dict, Optional, Tuple
+from typing import Dict
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException, Request, Response
@@ -19,8 +18,6 @@ import qrcode
 from io import BytesIO
 
 from arkashri.config import get_settings
-from arkashri.logging_config import security_logger
-from arkashri.utils.error_handling import SecurityException, ErrorContext
 
 logger = structlog.get_logger(__name__)
 

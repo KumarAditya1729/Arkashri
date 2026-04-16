@@ -5,7 +5,6 @@ Wires the frontend Risk Register page to Postgres.
 """
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status

@@ -9,7 +9,7 @@ from sqlalchemy import text
 import structlog
 
 from arkashri.config import get_settings
-from arkashri.utils.error_handling import database_retry, DatabaseException, ErrorContext
+from arkashri.utils.error_handling import database_retry, DatabaseException
 
 logger = structlog.get_logger(__name__)
 
@@ -61,7 +61,7 @@ class DatabaseHealthChecker:
         try:
             async with AsyncSessionLocal() as session:
                 # Simple health check query
-                result = await session.execute(text("SELECT 1 as health_check"))
+                await session.execute(text("SELECT 1 as health_check"))
                 await session.commit()
                 
                 # Log successful health check
@@ -205,7 +205,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
-        except Exception as e:
+        except Exception:
             await session.rollback()
             raise
         finally:

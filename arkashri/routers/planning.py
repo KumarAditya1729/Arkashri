@@ -1,14 +1,13 @@
 # pyre-ignore-all-errors
 from __future__ import annotations
-import uuid
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from arkashri.db import get_session
-from arkashri.models import ClientRole, Engagement, EngagementPhase, TeamMember, PhaseStatus
+from arkashri.models import ClientRole, EngagementPhase, TeamMember, PhaseStatus
 from arkashri.dependencies import require_api_client, AuthContext
 
 router = APIRouter()

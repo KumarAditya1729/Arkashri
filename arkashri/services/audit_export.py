@@ -3,7 +3,6 @@ import os
 import uuid
 import datetime
 import structlog
-from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select

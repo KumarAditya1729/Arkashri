@@ -5,16 +5,12 @@ Provides CSP, HSTS, XSS protection, and other security headers
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
-from urllib.parse import urlparse
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 import structlog
 
 from arkashri.config import get_settings
-from arkashri.logging_config import security_logger
-from arkashri.utils.error_handling import SecurityException, ErrorContext
 
 logger = structlog.get_logger(__name__)
 

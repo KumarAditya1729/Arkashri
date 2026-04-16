@@ -1,8 +1,6 @@
 # pyre-ignore-all-errors
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from arkashri.dependencies import require_api_client
-from arkashri.utils.error_handling import handle_errors
 
 logger = structlog.get_logger("api.websockets")
 

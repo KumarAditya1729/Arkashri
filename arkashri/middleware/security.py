@@ -5,12 +5,10 @@ Provides request validation, security headers, and threat detection
 """
 from __future__ import annotations
 
-import hashlib
 import ipaddress
 import re
 import time
-from typing import Dict, List, Optional, Set
-from urllib.parse import urlparse
+from typing import Dict, Set
 
 from fastapi import HTTPException, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -18,7 +16,6 @@ import structlog
 
 from arkashri.config import get_settings
 from arkashri.logging_config import security_logger
-from arkashri.utils.error_handling import SecurityException, ErrorContext
 
 logger = structlog.get_logger(__name__)
 

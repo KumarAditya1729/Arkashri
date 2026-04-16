@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from arkashri.dependencies import get_session, require_api_client
 from arkashri.dependencies import AuthContext
-from arkashri.models import ProfessionalJudgment, JudgmentStatus, Engagement, User, ClientRole
+from arkashri.models import ProfessionalJudgment, JudgmentStatus, User, ClientRole
 
 router = APIRouter(prefix="/v1/judgments", tags=["Human Judgment"])
 

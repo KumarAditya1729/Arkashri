@@ -8,7 +8,7 @@ from sqlalchemy import select
 from arkashri.models import (
     AuditOpinion, AuditOpinionType,
     ExceptionCase, ExceptionStatus,
-    ProfessionalJudgment, JudgmentStatus,
+    ProfessionalJudgment,
 )
 from arkashri.schemas import OpinionCreate
 

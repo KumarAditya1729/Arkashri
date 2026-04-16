@@ -1,5 +1,4 @@
 # pyre-ignore-all-errors
-import hashlib
 import json
 from typing import Callable, Optional
 

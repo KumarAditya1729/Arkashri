@@ -13,7 +13,7 @@ from arkashri.services.email import send_email
 from arkashri.config import get_settings
 from arkashri.services.archive import archive_completed_audit
 from arkashri.services.erp_adapter import normalize_batch
-from arkashri.models import Transaction, ERPConnection, ERPSyncLog, ERPSyncStatus
+from arkashri.models import ERPConnection, ERPSyncLog, ERPSyncStatus
 
 logger = structlog.get_logger("worker")
 settings = get_settings()

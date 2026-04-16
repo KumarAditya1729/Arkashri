@@ -17,7 +17,6 @@ Gate logic:
 from __future__ import annotations
 
 import hashlib
-import uuid
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
@@ -477,7 +476,7 @@ async def withdraw_signature(
     # Log the withdrawal
     await log_system_event(
         db,
-        tenant_id=auth.tenant_id,
+        tenant_id=_auth.tenant_id,
         user_id=None,
         user_email=sig.partner_email,
         action="PARTNER_SIGNATURE_WITHDRAWN",
@@ -554,7 +553,7 @@ async def verify_seal(
     # Log verification attempt
     await log_system_event(
         db,
-        tenant_id=auth.tenant_id,
+        tenant_id=_auth.tenant_id,
         action="SEAL_VERIFIED",
         resource_type="ENGAGEMENT",
         resource_id=str(engagement_id),

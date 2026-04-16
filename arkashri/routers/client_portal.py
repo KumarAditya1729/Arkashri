@@ -1,8 +1,7 @@
 # pyre-ignore-all-errors
-import uuid
 import secrets
 import datetime
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
@@ -14,9 +13,7 @@ from arkashri.models import (
     Engagement, 
     ClientPortalAccess, 
     AuditRun, 
-    AuditRunStep, 
     ProfessionalJudgment,
-    ClientRole,
 )
 
 router = APIRouter(prefix="/v1/portal", tags=["Client Portal"])
@@ -205,7 +202,7 @@ async def subscribe_to_milestones(
     """
     (External) Allows a client to subscribe to email alerts for major audit milestones.
     """
-    access = await verify_portal_token(token, session)
+    await verify_portal_token(token, session)
     
     # In a full implementation, this might insert into a `NotificationPreference` table.
     # For now, we mock the success.

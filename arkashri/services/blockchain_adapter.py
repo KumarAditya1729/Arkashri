@@ -6,7 +6,6 @@ from typing import Protocol
 
 from arkashri.config import get_settings
 from arkashri.services.canonical import hash_object
-import structlog
 from circuitbreaker import circuit, CircuitBreakerError
 
 

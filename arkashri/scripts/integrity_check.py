@@ -1,6 +1,5 @@
 # pyre-ignore-all-errors
 import asyncio
-import uuid
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession

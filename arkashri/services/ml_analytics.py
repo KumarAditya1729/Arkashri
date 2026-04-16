@@ -5,13 +5,14 @@ Provides machine learning analytics, anomaly detection, and risk prediction
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Tuple
 from pathlib import Path
 import os
 
 import structlog
+
+from arkashri.config import get_settings
 
 _ML_ENABLED = os.getenv("ENABLE_ML", "false").lower() == "true"
 if _ML_ENABLED:
@@ -20,10 +21,8 @@ if _ML_ENABLED:
     from sklearn.ensemble import IsolationForest, RandomForestClassifier
     from sklearn.preprocessing import StandardScaler
     from sklearn.model_selection import train_test_split
-    from sklearn.metrics import accuracy_score, classification_report
+    from sklearn.metrics import accuracy_score
 
-from arkashri.config import get_settings
-from arkashri.logging_config import analytics_logger
 
 logger = structlog.get_logger(__name__)
 

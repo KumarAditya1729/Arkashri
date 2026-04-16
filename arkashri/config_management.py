@@ -9,11 +9,10 @@ import os
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 import structlog
-from pydantic import BaseModel, ValidationError
 
 from arkashri.config import get_settings
 

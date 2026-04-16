@@ -6,7 +6,7 @@ from typing import Any
 from datetime import datetime, timezone
 
 from fastapi import Depends, Header, HTTPException, Request
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from slowapi import Limiter

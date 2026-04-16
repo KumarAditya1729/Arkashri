@@ -12,22 +12,16 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
-import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-import aiobotocore.session
 import structlog
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from arkashri.config import get_settings
-from arkashri.db import AsyncSessionLocal
 from arkashri.logging_config import audit_logger
-from arkashri.utils.error_handling import handle_errors, ErrorContext
+from arkashri.utils.error_handling import handle_errors
 
 logger = structlog.get_logger(__name__)
 

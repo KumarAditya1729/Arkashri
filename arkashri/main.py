@@ -1,19 +1,15 @@
 # pyre-ignore-all-errors
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends, WebSocket
+from fastapi import FastAPI, Depends, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from arkashri.db import get_session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.sessions import SessionMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 from arq import create_pool
 from arq.connections import RedisSettings
 
 import os
-import uuid
 import structlog
 import asyncio
 
@@ -24,14 +20,12 @@ if os.getenv("ENABLE_TRACING", "false").lower() == "true":
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
     from opentelemetry.sdk.resources import Resource
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
     _TRACING_ENABLED = True
 else:
     _TRACING_ENABLED = False
 
 # Prometheus — only if ENABLE_METRICS=true
 if os.getenv("ENABLE_METRICS", "false").lower() == "true":
-    from prometheus_fastapi_instrumentator import Instrumentator
     _METRICS_ENABLED = True
 else:
     _METRICS_ENABLED = False
@@ -39,36 +33,28 @@ else:
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
 import redis.asyncio as redis_async
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 from arkashri.config import get_settings
 from arkashri.routers import router as api_v1_router
 from arkashri.routers.websockets import router as websockets_router
 from arkashri.routers.admin import router as admin_router
-from arkashri.dependencies import limiter
-from arkashri.middleware.idempotency import IdempotencyMiddleware
+from arkashri.routers.engine_status import router as status_router
+from arkashri.routers.standards import router as standards_router
+from arkashri.routers.judgments import router as judgments_router
+from arkashri.routers.client_portal import router as client_portal_router
+from arkashri.routers.reporting import router as reporting_router
+from arkashri.services.health import get_full_health_status
 
 # Import production middleware
-from arkashri.middleware.security import (
-    SecurityHeadersMiddleware,
-    RequestValidationMiddleware,
-    ThreatDetectionMiddleware,
-    RequestSizeMiddleware
-)
-from arkashri.middleware.rate_limiting import ProductionRateLimitMiddleware
 from arkashri.middleware.performance import (
     AdvancedCacheMiddleware,
-    CompressionMiddleware,
-    RequestOptimizationMiddleware,
-    ConnectionPoolingMiddleware,
-    MemoryOptimizationMiddleware
+    CompressionMiddleware
 )
-
+from arkashri.middleware.oauth2 import create_oauth2_middleware
+from arkashri.middleware.mfa import create_mfa_middleware
+from arkashri.middleware.enhanced_security import create_enhanced_security_middleware
 # Import production services
-from arkashri.logging_config import setup_logging, security_logger, performance_logger
-from arkashri.utils.error_handling import error_handler, ErrorContext
+from arkashri.logging_config import setup_logging, performance_logger
 from arkashri.db import db_manager
 from arkashri.services.backup import disaster_recovery_service
 
@@ -180,9 +166,6 @@ app = FastAPI(
 
 # ── Production Middleware Stack ─────────────────────────────────────────────────
 # Enhanced security middleware
-from arkashri.middleware.oauth2 import create_oauth2_middleware
-from arkashri.middleware.mfa import create_mfa_middleware
-from arkashri.middleware.enhanced_security import create_enhanced_security_middleware
 # Security middleware (WebSocket-friendly configuration)
 # app.add_middleware(SecurityHeadersMiddleware)  # Temporarily disabled due to import issue
 
@@ -293,8 +276,7 @@ async def cleanup_middleware_resources(app: FastAPI):
 
 
 # ── Enhanced Health endpoint ─────────────────────────────────────────────────
-from arkashri.services.health import get_full_health_status
-from arkashri.routers.engine_status import router as status_router
+
 
 @app.get("/", include_in_schema=False)
 async def root():
@@ -388,11 +370,7 @@ async def detailed_metrics():
         )
 
 
-# ── Router Registration ───────────────────────────────────────────────────────
-from arkashri.routers.standards import router as standards_router
-from arkashri.routers.judgments import router as judgments_router
-from arkashri.routers.client_portal import router as client_portal_router
-from arkashri.routers.reporting import router as reporting_router
+
 
 app.include_router(api_v1_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")

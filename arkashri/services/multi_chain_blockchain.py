@@ -6,13 +6,13 @@ Supports Polkadot, Ethereum, and Polygon blockchain networks
 from __future__ import annotations
 
 import json
-import asyncio
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional
 from datetime import datetime
-from pathlib import Path
 import os
 
 import structlog
+
+from arkashri.config import get_settings
 
 _BLOCKCHAIN_ENABLED = os.getenv("ENABLE_BLOCKCHAIN", "false").lower() == "true"
 if _BLOCKCHAIN_ENABLED:
@@ -20,8 +20,6 @@ if _BLOCKCHAIN_ENABLED:
     from web3.middleware import ExtraDataToPOAMiddleware
     from substrateinterface import SubstrateInterface, Keypair
 
-from arkashri.config import get_settings
-from arkashri.logging_config import blockchain_logger
 
 logger = structlog.get_logger(__name__)
 

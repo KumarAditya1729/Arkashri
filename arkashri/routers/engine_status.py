@@ -1,8 +1,6 @@
 # pyre-ignore-all-errors
 from fastapi import APIRouter
 from pydantic import BaseModel
-from arkashri.services.ai_fabric import inference_engine
-from arkashri.services.blockchain_adapter import ADAPTERS
 
 router = APIRouter()
 
@@ -19,9 +17,7 @@ class EngineStatus(BaseModel):
 async def get_engine_status():
     """Returns the current broken/working status of AI and Blockchain circuits."""
     # We can detect if the ai_inference_engine circuit is open
-    ai_broken = False
     try:
-        from circuitbreaker import CircuitBreaker
         # The 'circuit' decorator normally registers with a global repository
         # However, checking the specific instance's circuit is easiest if we can access the state
         # For simplicity, we'll try to get it by name or just check the last error

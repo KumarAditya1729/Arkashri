@@ -5,7 +5,7 @@ Provides AI-powered insights and predictive analytics
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 import structlog

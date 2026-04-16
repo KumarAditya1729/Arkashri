@@ -5,8 +5,6 @@ Provides multi-level rate limiting with Redis backend and intelligent throttling
 """
 from __future__ import annotations
 
-import asyncio
-import hashlib
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -384,7 +382,7 @@ class ProductionRateLimitMiddleware(BaseHTTPMiddleware):
         for rule_name, rule in self.rules:
             # Generate key based on scope
             if rule.scope == RateLimitScope.GLOBAL:
-                key = f"rate_limit:global"
+                key = "rate_limit:global"
             elif rule.scope == RateLimitScope.TENANT:
                 key = f"rate_limit:tenant:{tenant_id}"
             elif rule.scope == RateLimitScope.USER:

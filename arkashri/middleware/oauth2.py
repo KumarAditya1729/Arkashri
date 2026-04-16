@@ -15,8 +15,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import structlog
 
 from arkashri.config import get_settings
-from arkashri.logging_config import security_logger
-from arkashri.utils.error_handling import SecurityException, ErrorContext
 
 logger = structlog.get_logger(__name__)
 

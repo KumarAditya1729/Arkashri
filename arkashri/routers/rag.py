@@ -108,7 +108,7 @@ async def rag_query(
 ) -> RagQueryResponse:
     # We pass 'tenant_id="<active>"' logic inside or let query_knowledge handle generic searches
     # Defaulting to _system if tenant is implied to be overall knowledge
-    tenant_id = "_system" 
+    # Defaulting to _system if tenant is implied to be overall knowledge
     res_payload = await query_knowledge(
         session,
         jurisdiction=payload.jurisdiction,

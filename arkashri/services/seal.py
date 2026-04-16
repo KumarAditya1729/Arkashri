@@ -389,7 +389,7 @@ async def generate_audit_seal(session: AsyncSession, engagement_id: uuid.UUID) -
         docs = await session.scalars(
             select(RegulatoryDocument)
             .where(RegulatoryDocument.jurisdiction == engagement.jurisdiction)
-            .where(RegulatoryDocument.is_promoted == True)
+            .where(RegulatoryDocument.is_promoted.is_(True))
         )
         current_versions = {}
         for doc in docs:

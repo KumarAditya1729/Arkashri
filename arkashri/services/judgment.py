@@ -9,11 +9,10 @@ record is created which blocks sealing until a CA formally signs off on it.
 """
 
 import uuid
-import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from arkashri.models import ProfessionalJudgment, JudgmentStatus, Engagement
+from arkashri.models import ProfessionalJudgment, JudgmentStatus
 
 # If AI confidence drops below this, human judgment is mandatory.
 AI_CONFIDENCE_THRESHOLD = 85.0 
