@@ -113,36 +113,36 @@ async def lifespan(app: FastAPI):
         
         try:
             app.state.redis_pool = await create_pool(
-            RedisSettings(host=redis_host, port=redis_port)
-        )
-        logger.info("Connected to Redis ARQ pool", host=redis_host, port=redis_port)
-        
-        # Initialize FastAPI Cache
-        cache_redis = redis_async.from_url(redis_url, encoding="utf-8", decode_responses=False)
-        FastAPICache.init(RedisBackend(cache_redis), prefix="arkashri-cache")
-        logger.info("Initialized FastAPI Cache with Redis backend")
-        
-        # Initialize database health checker
-        await db_manager.health_checker.check_health()
-        logger.info("Database health checker initialized")
-        
-        # Start background tasks for production
-        if settings.backup_enabled:
-            asyncio.create_task(backup_scheduler())
-        
-        if settings.enable_performance_metrics:
-            asyncio.create_task(metrics_collector())
-        
-    except Exception as e:
-        logger.warning("Failed to connect to Redis (ARQ/Cache will be unavailable)", error=str(e))
-        app.state.redis_pool = None
-        # Ensure FastAPICache is always initialized to prevent AssertionError on cached routes
-        try:
-            from fastapi_cache.backends.inmemory import InMemoryBackend
-            FastAPICache.init(InMemoryBackend(), prefix="arkashri-cache")
-            logger.info("Initialized FastAPI Cache with InMemory fallback (Redis unavailable)")
-        except Exception as cache_err:
-            logger.warning("FastAPICache init fallback also failed", error=str(cache_err))
+                RedisSettings(host=redis_host, port=redis_port)
+            )
+            logger.info("Connected to Redis ARQ pool", host=redis_host, port=redis_port)
+            
+            # Initialize FastAPI Cache
+            cache_redis = redis_async.from_url(redis_url, encoding="utf-8", decode_responses=False)
+            FastAPICache.init(RedisBackend(cache_redis), prefix="arkashri-cache")
+            logger.info("Initialized FastAPI Cache with Redis backend")
+            
+            # Initialize database health checker
+            await db_manager.health_checker.check_health()
+            logger.info("Database health checker initialized")
+            
+            # Start background tasks for production
+            if settings.backup_enabled:
+                asyncio.create_task(backup_scheduler())
+            
+            if settings.enable_performance_metrics:
+                asyncio.create_task(metrics_collector())
+            
+        except Exception as e:
+            logger.warning("Failed to connect to Redis (ARQ/Cache will be unavailable)", error=str(e))
+            app.state.redis_pool = None
+            # Ensure FastAPICache is always initialized to prevent AssertionError on cached routes
+            try:
+                from fastapi_cache.backends.inmemory import InMemoryBackend
+                FastAPICache.init(InMemoryBackend(), prefix="arkashri-cache")
+                logger.info("Initialized FastAPI Cache with InMemory fallback (Redis unavailable)")
+            except Exception as cache_err:
+                logger.warning("FastAPICache init fallback also failed", error=str(cache_err))
 
     yield
 
