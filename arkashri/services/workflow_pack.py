@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-PACK_DIR = ROOT_DIR / "workflow_pack"
+if Path("/app/workflow_pack/index.json").exists():
+    PACK_DIR = Path("/app/workflow_pack")
+else:
+    PACK_DIR = Path(__file__).resolve().parents[2] / "workflow_pack"
+
 INDEX_PATH = PACK_DIR / "index.json"
-
-
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
