@@ -2,8 +2,7 @@
 FROM python:3.11-slim as builder
 
 WORKDIR /app
-COPY pyproject.toml README.md ./
-COPY arkashri ./arkashri
+COPY . .
 
 # We'll install to a virtualenv for isolation so we can easily copy it to the final stage.
 RUN python -m venv /opt/venv
@@ -27,11 +26,11 @@ ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONPATH="/app"
 
 # Copy application code
-COPY ./arkashri ./arkashri
-COPY ./alembic  ./alembic
-COPY ./scripts  ./scripts
-COPY ./workflow_pack ./workflow_pack
-COPY ./alembic.ini .
+COPY --from=builder /app/arkashri ./arkashri
+COPY --from=builder /app/alembic  ./alembic
+COPY --from=builder /app/scripts  ./scripts
+COPY --from=builder /app/workflow_pack ./workflow_pack
+COPY --from=builder /app/alembic.ini .
 
 # Set strict permissions
 RUN chown -R arkashri:arkashri /app
