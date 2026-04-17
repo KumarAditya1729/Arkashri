@@ -88,9 +88,16 @@ if _TRACING_ENABLED:
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ── FIX (B): Always run DB health check on startup, regardless of Redis ──
+    # Previously this only ran inside the Redis-success branch, causing every
+    # API request to fail the is_healthy() gate on cold starts with dead Redis.
+    logger.info("startup_db_health_check_begin")
+    await db_manager.health_checker.check_health()
+    logger.info("startup_db_health_check_complete")
+
     # Parse REDIS_URL: redis://host:port/db  →  host + port
     redis_url = settings.redis_url  # e.g. redis://default:pass@redis:6379/0
-    redis_pool = None
+    app.state.redis_pool = None
     if redis_url:
         import urllib.parse
         parsed = urllib.parse.urlparse(redis_url)
@@ -100,24 +107,23 @@ async def lifespan(app: FastAPI):
         redis_username = parsed.username or None
         
         try:
+            # ── FIX (C): conn_timeout=3 — don't stall startup for 10 s when
+            #    Railway Redis is down/asleep. Falls back to InMemory gracefully.
             app.state.redis_pool = await create_pool(
                 RedisSettings(
                     host=redis_host,
                     port=redis_port,
                     password=redis_password,
                     username=redis_username,
+                    conn_timeout=3,
                 )
             )
             logger.info("Connected to Redis ARQ pool", host=redis_host, port=redis_port)
             
-            # Initialize FastAPI Cache
+            # Initialize FastAPI Cache with Redis
             cache_redis = redis_async.from_url(redis_url, encoding="utf-8", decode_responses=False)
             FastAPICache.init(RedisBackend(cache_redis), prefix="arkashri-cache")
             logger.info("Initialized FastAPI Cache with Redis backend")
-            
-            # Initialize database health checker
-            await db_manager.health_checker.check_health()
-            logger.info("Database health checker initialized")
             
             # Start background tasks for production
             if settings.backup_enabled:
@@ -215,8 +221,17 @@ if settings.enable_compression:
 # app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # app.add_middleware(SlowAPIMiddleware)
 
-# Session middleware - WebSocket-friendly
-# app.add_middleware(SessionMiddleware, secret_key=settings.session_secret_key, max_age=86400)
+# Session middleware — re-enabled (M4 fix)
+# SessionMiddleware is WebSocket-safe; it only reads/writes cookies and does
+# NOT wrap WebSocket upgrades like BaseHTTPMiddleware does.
+from starlette.middleware.sessions import SessionMiddleware
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret_key,
+    max_age=86400,
+    same_site="lax",
+    https_only=(settings.app_env == "production"),
+)
 
 # CORS middleware (WebSocket-friendly)
 app.add_middleware(

@@ -1,10 +1,45 @@
 __pycache__/
 *.pyc
+*.pyo
+
+# Python virtual environments — all common names used in this repo
 .venv/
+.venv2/
+.venv_health/
+venv/
+
+# ── Secrets — NEVER commit these ─────────────────────────────────────────────
 .env
+.env.local
+.env.production
+.env.staging
+
+# ── Local SQLite databases (dev artefacts, not production data) ────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Uploads (user-submitted files) ────────────────────────────────────────────
+uploads/
+
+# ── Build and cache artefacts ─────────────────────────────────────────────────
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.pyre_configuration
+*.egg-info/
+build/
+dist/
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
 node_modules/
 .next/
 package-lock.json
+
+# ── Deployment tooling ────────────────────────────────────────────────────────
 .vercel
+.DS_Store

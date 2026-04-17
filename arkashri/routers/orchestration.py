@@ -56,11 +56,19 @@ async def create_orchestration_run(
 
         if payload.auto_execute:
             redis = request.app.state.redis_pool
-            await redis.enqueue_job(
-                "execute_orchestration_task", 
-                run_id=str(run.id), 
-                max_steps=500
-            )
+            if redis is None:
+                # Job not enqueued — return run in PENDING state; user can trigger manually
+                # once Redis is healthy
+                import structlog
+                structlog.get_logger(__name__).warning(
+                    "auto_execute_skipped_redis_unavailable", run_id=str(run.id)
+                )
+            else:
+                await redis.enqueue_job(
+                    "execute_orchestration_task",
+                    run_id=str(run.id),
+                    max_steps=500
+                )
 
         await session.commit()
         stored = await _load_run_with_steps(session, run.id)
@@ -134,6 +142,12 @@ async def execute_orchestration_run(
         raise HTTPException(status_code=404, detail="Orchestration run not found")
 
     redis = request.app.state.redis_pool
+    if redis is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Background job queue unavailable. Redis is not connected. "
+                   "Check REDIS_URL in Railway Variables and confirm the Redis service is running."
+        )
     job = await redis.enqueue_job(
         "execute_orchestration_task", 
         run_id=str(run.id), 
@@ -195,3 +209,33 @@ async def fetch_audit_report(
         media_type="application/pdf", 
         headers={"Content-Disposition": f'attachment; filename="audit_report_{run_id}.pdf"'}
     )
+
+
+# ── FIX (M2): Endpoint the frontend calls — list runs scoped to an engagement ──
+@router.get("/engagements/{engagement_id}/runs", response_model=list[OrchestrationRunOut])
+async def list_runs_by_engagement(
+    engagement_id: str,
+    limit: int = 50,
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(
+        require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})
+    ),
+) -> list[AuditRun]:
+    """List all orchestration runs for a specific engagement (used by frontend dashboard)."""
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id format")
+
+    run_ids = list(await session.scalars(
+        select(AuditRun.id)
+        .where(AuditRun.engagement_id == eid)
+        .order_by(AuditRun.created_at.desc())
+        .limit(limit)
+    ))
+    runs: list[AuditRun] = []
+    for rid in run_ids:
+        run = await _load_run_with_steps(session, rid)
+        if run is not None:
+            runs.append(run)
+    return runs

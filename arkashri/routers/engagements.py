@@ -1,6 +1,8 @@
 # pyre-ignore-all-errors
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,7 +56,11 @@ async def get_engagement_by_id(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.READ_ONLY, ClientRole.REVIEWER})),
 ) -> EngagementOut:
-    engagement = await get_engagement(session, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await get_engagement(session, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
     return EngagementOut.model_validate(engagement)
@@ -67,13 +73,17 @@ async def generate_materiality(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> MaterialityOut:
-    engagement = await get_engagement(session, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await get_engagement(session, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
         
     materiality = await compute_materiality(
         session,
-        engagement_id=engagement_id,
+        engagement_id=eid,
         tenant_id=engagement.tenant_id,
         jurisdiction=engagement.jurisdiction,
         payload=payload
@@ -88,13 +98,17 @@ async def generate_opinion(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> OpinionOut:
-    engagement = await get_engagement(session, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await get_engagement(session, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
         
     opinion = await generate_draft_opinion(
         session,
-        engagement_id=engagement_id,
+        engagement_id=eid,
         tenant_id=engagement.tenant_id,
         jurisdiction=engagement.jurisdiction,
         payload=payload
@@ -111,7 +125,11 @@ async def seal_engagement(
     Generates the WORM Sealed Audit File (Arkashri_Engagement_Seal) for regulatory submission.
     """
     try:
-        seal_bundle = await generate_audit_seal(session, engagement_id)
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    try:
+        seal_bundle = await generate_audit_seal(session, eid)
         return {"status": "success", "message": "Engagement sealed cryptographically.", "seal": seal_bundle}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -130,12 +148,16 @@ async def upsert_engagement_esg(
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> ESGMetricsOut:
     """Ingest or update Environmental, Social & Governance (ESG) metrics for a given engagement."""
-    engagement = await get_engagement(session, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await get_engagement(session, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
     record = await upsert_esg_metrics(
         session,
-        engagement_id=engagement_id,
+        engagement_id=eid,
         tenant_id=engagement.tenant_id,
         payload=payload,
     )
@@ -155,12 +177,16 @@ async def upsert_engagement_forensic(
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> ForensicProfileOut:
     """Ingest or update the Forensic Risk Profile (Benford's law, offshore routing, sanctions probabilities) for a given engagement."""
-    engagement = await get_engagement(session, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await get_engagement(session, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
     record = await upsert_forensic_profile(
         session,
-        engagement_id=engagement_id,
+        engagement_id=eid,
         tenant_id=engagement.tenant_id,
         payload=payload,
     )

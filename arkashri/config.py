@@ -20,8 +20,8 @@ class Settings(BaseSettings):
                 v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
         return v
 
-    db_pool_size: int = 50
-    db_max_overflow: int = 20
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
     redis_url: str = "redis://localhost:6379/0"
     app_env: str = "dev"
     auth_enforced: bool = False
@@ -125,13 +125,11 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173", "http://localhost:5173",
         "http://127.0.0.1:4173", "http://localhost:4173",
         "http://localhost:3000", "http://127.0.0.1:3000",
-        # Production — Vercel frontend
+        # Production — Vercel frontend (specific URLs only — wildcards break credentialed CORS)
         "https://arkashri.vercel.app",
         "https://arkashri-kumaraditya1729s-projects.vercel.app",
-        # Allow all vercel.app preview deployments
-        "https://*.vercel.app",
         # Railway backend url (for inter-service calls)
-        "https://arkashri-production.up.railway.app",
+        "https://arkashri-production-95ea.up.railway.app",
     ]
     
     # Graceful shutdown
