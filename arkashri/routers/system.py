@@ -23,7 +23,7 @@ from arkashri.dependencies import require_api_client, AuthContext, _audit_regist
 
 router = APIRouter()
 
-@router.get("/debug-fs")
+@router.post("/debug-fs")
 async def debug_fs() -> dict[str, Any]:
     import os
     app_files = os.listdir("/app") if os.path.exists("/app") else []
