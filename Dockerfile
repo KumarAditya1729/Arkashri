@@ -30,6 +30,7 @@ ENV PYTHONPATH="/app"
 COPY ./arkashri ./arkashri
 COPY ./alembic  ./alembic
 COPY ./scripts  ./scripts
+COPY ./workflow_pack ./workflow_pack
 COPY ./alembic.ini .
 
 # Set strict permissions
