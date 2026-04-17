@@ -23,7 +23,14 @@ WORKDIR /app
 # Copy the venv from builder
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+ENV HOME="/app"
 ENV PYTHONPATH="/app"
+
+# Fix permission denied: '/home/arkashri' error encountered in Railway
+RUN mkdir -p /home/arkashri && chown -R arkashri:arkashri /home/arkashri && chmod -R 777 /home/arkashri
+
+# Force a clean rebuild to invalidate Railway's aggressive layer cache
+RUN echo "FORCE_BUILD_ID=$(date +%s)"
 
 # Copy application code
 COPY --from=builder /app/arkashri ./arkashri
