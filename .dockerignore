@@ -1,11 +1,18 @@
-.git
-.github
+# ── Massive Workspace Exclusions ──────────────────────────────────────────────
+frontend/
+arkashri-client/
+arkashri-ai-engineer/
 node_modules/
-.next/
-dist/
-build/
-*.pyc
+app/
+realistic_testing_pack/
+infrastructure/
+k8s/
+terraform/
+
+# ── Python/Venv/Cache ─────────────────────────────────────────────────────────
 __pycache__/
+*.pyc
+*.pyo
 venv/
 .venv/
 .venv2/
@@ -20,4 +27,9 @@ uploads/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-
+.vercel/
+.git
+.github
+dist/
+build/
+*.egg-info/
