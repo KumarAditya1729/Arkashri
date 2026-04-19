@@ -13,21 +13,23 @@ import hashlib
 # JWT Configuration
 SECRET_KEY = "bafc8aedb2980401f4d3872d6f8307ef14535a77e615e48da577dee6f2268567"
 ALGORITHM = "HS256"
-API_BASE = "http://localhost:8000"
+API_BASE = "http://127.0.0.1:8003"
 
 def generate_test_token():
     """Generate a test JWT token for authentication"""
     now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
-        "sub": "test-user",
+        "sub": "550e8400-e29b-41d4-a716-446655440000",
         "iss": "arkashri", 
         "aud": "arkashri-api",
         "iat": now,
         "exp": now + datetime.timedelta(hours=24),
-        "user_id": str(uuid.uuid4()),
+        "user_id": "550e8400-e29b-41d4-a716-446655440000",
         "email": "test@example.com",
         "role": "ADMIN",
-        "tenant_id": "test-tenant"
+        "tenant_id": "test-tenant",
+        "type": "access",
+        "sid": "660e8400-e29b-41d4-a716-446655440000"
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 

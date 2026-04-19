@@ -7,17 +7,20 @@ from __future__ import annotations
 
 import base64
 import secrets
-from typing import Dict
+from typing import Any, Dict
 from datetime import datetime, timedelta
+from io import BytesIO
 
-from fastapi import HTTPException, Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
+import httpx
 import structlog
 import pyotp
 import qrcode
-from io import BytesIO
+from fastapi import HTTPException, Request, Response
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from arkashri.config import get_settings
+from arkashri.services.jwt_service import decode_token
 
 logger = structlog.get_logger(__name__)
 
@@ -33,6 +36,33 @@ class MFAMiddleware(BaseHTTPMiddleware):
         # MFA configuration
         self.ttl_seconds = getattr(self.settings, 'mfa_ttl_seconds', 300)
         self.issuer = "Arkashri Audit OS"
+
+    def _resolve_user_id(self, request: Request, *, required: bool = True) -> str | None:
+        user_id = request.headers.get("X-User-ID")
+        if user_id:
+            return user_id
+
+        authorization = request.headers.get("Authorization")
+        if authorization and authorization.startswith("Bearer "):
+            claims = decode_token(authorization.removeprefix("Bearer ").strip())
+            claim_user_id = claims.get("user_id") or claims.get("sub")
+            if claim_user_id:
+                return str(claim_user_id)
+
+        session_user: Any = None
+        try:
+            session_user = request.session.get("user")
+        except Exception:
+            session_user = None
+
+        if isinstance(session_user, dict):
+            session_user_id = session_user.get("user_id") or session_user.get("sub") or session_user.get("id")
+            if session_user_id:
+                return str(session_user_id)
+
+        if required:
+            raise HTTPException(status_code=401, detail="Authenticated user identity required for MFA.")
+        return None
     
     async def dispatch(self, request: Request, call_next):
         """Handle MFA authentication flow"""
@@ -75,6 +105,8 @@ class MFAMiddleware(BaseHTTPMiddleware):
             else:
                 raise HTTPException(status_code=400, detail="Invalid MFA action")
                 
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error("mfa_request_error", error=str(e), action=action)
             raise HTTPException(status_code=500, detail="MFA request failed")
@@ -83,8 +115,7 @@ class MFAMiddleware(BaseHTTPMiddleware):
         """Setup MFA for a user"""
         
         try:
-            # Get user identifier from request (simplified)
-            user_id = request.headers.get("X-User-ID", "demo_user")
+            user_id = self._resolve_user_id(request)
             
             # Generate TOTP secret
             totp_secret = pyotp.random_base32()
@@ -104,15 +135,16 @@ class MFAMiddleware(BaseHTTPMiddleware):
             
             logger.info("mfa_setup_initiated", user_id=user_id)
             
-            return Response(
+            return JSONResponse(
                 content={
                     "success": True,
                     "secret": totp_secret,
                     "provisioning_uri": provisioning_uri
-                },
-                media_type="application/json"
+                }
             )
             
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error("mfa_setup_error", error=str(e))
             raise HTTPException(status_code=500, detail="MFA setup failed")
@@ -121,29 +153,32 @@ class MFAMiddleware(BaseHTTPMiddleware):
         """Verify MFA code"""
         
         try:
-            # Get user ID and code from request
-            user_id = request.headers.get("X-User-ID", "demo_user")
-            
-            # Parse request body (simplified)
+            user_id = self._resolve_user_id(request)
             body = await request.json()
             code = body.get("code")
+            method = str(body.get("method", "totp")).lower()
             
             if not code:
                 raise HTTPException(status_code=400, detail="MFA code required")
             
-            # Get user's MFA secret
-            if user_id not in self.mfa_secrets:
-                raise HTTPException(status_code=400, detail="MFA not setup for user")
-            
-            mfa_data = self.mfa_secrets[user_id]
-            totp_secret = mfa_data["secret"]
-            
-            # Verify TOTP code
-            totp = pyotp.TOTP(totp_secret)
-            is_valid = totp.verify(code, valid_window=1)
+            if method == "sms":
+                sms_token = self.mfa_tokens.get(f"sms_{user_id}")
+                is_valid = bool(
+                    sms_token
+                    and datetime.utcnow() <= sms_token["expires_at"]
+                    and secrets.compare_digest(str(sms_token["code"]), str(code))
+                )
+            else:
+                if user_id not in self.mfa_secrets:
+                    raise HTTPException(status_code=400, detail="MFA not setup for user")
+
+                mfa_data = self.mfa_secrets[user_id]
+                totp_secret = mfa_data["secret"]
+                totp = pyotp.TOTP(totp_secret)
+                is_valid = totp.verify(code, valid_window=1)
             
             if not is_valid:
-                logger.warning("mfa_verification_failed", user_id=user_id)
+                logger.warning("mfa_verification_failed", user_id=user_id, method=method)
                 raise HTTPException(status_code=401, detail="Invalid MFA code")
             
             # Mark MFA as verified for this session
@@ -154,18 +189,19 @@ class MFAMiddleware(BaseHTTPMiddleware):
                 "expires_at": datetime.utcnow() + timedelta(seconds=self.ttl_seconds)
             }
             
-            # Mark user's MFA as verified
-            mfa_data["verified"] = True
+            if method == "sms":
+                self.mfa_tokens.pop(f"sms_{user_id}", None)
+            else:
+                self.mfa_secrets[user_id]["verified"] = True
             
             logger.info("mfa_verification_success", user_id=user_id)
             
-            return Response(
+            return JSONResponse(
                 content={
                     "success": True,
                     "session_token": session_token,
                     "expires_at": self.mfa_tokens[session_token]["expires_at"].isoformat()
-                },
-                media_type="application/json"
+                }
             )
             
         except HTTPException:
@@ -178,7 +214,7 @@ class MFAMiddleware(BaseHTTPMiddleware):
         """Generate QR code for TOTP setup"""
         
         try:
-            user_id = request.headers.get("X-User-ID", "demo_user")
+            user_id = self._resolve_user_id(request)
             
             if user_id not in self.mfa_secrets:
                 raise HTTPException(status_code=400, detail="MFA not setup for user")
@@ -207,13 +243,12 @@ class MFAMiddleware(BaseHTTPMiddleware):
             
             logger.info("qr_code_generated", user_id=user_id)
             
-            return Response(
+            return JSONResponse(
                 content={
                     "success": True,
                     "qr_code": f"data:image/png;base64,{qr_base64}",
                     "provisioning_uri": provisioning_uri
-                },
-                media_type="application/json"
+                }
             )
             
         except HTTPException:
@@ -223,33 +258,56 @@ class MFAMiddleware(BaseHTTPMiddleware):
             raise HTTPException(status_code=500, detail="QR code generation failed")
     
     async def send_sms_code(self, request: Request) -> Response:
-        """Send SMS verification code (placeholder implementation)"""
+        """Send SMS verification code via the configured webhook backend."""
         
         try:
-            user_id = request.headers.get("X-User-ID", "demo_user")
-            
-            # Generate 6-digit code
+            user_id = self._resolve_user_id(request)
+            if not self.settings.sms_webhook_url:
+                raise HTTPException(status_code=501, detail="SMS delivery backend is not configured")
+
+            body = await request.json()
+            phone_number = body.get("phone_number")
+            if not phone_number:
+                raise HTTPException(status_code=400, detail="phone_number is required")
+
             sms_code = f"{secrets.randbelow(1000000):06d}"
             
-            # Store SMS code (in production, use encrypted storage)
             self.mfa_tokens[f"sms_{user_id}"] = {
                 "code": sms_code,
+                "phone_number": phone_number,
                 "created_at": datetime.utcnow(),
                 "expires_at": datetime.utcnow() + timedelta(minutes=5)
             }
-            
-            # In production, integrate with SMS service (Twilio, etc.)
+
+            headers = {"Content-Type": "application/json"}
+            if self.settings.sms_webhook_bearer_token:
+                headers["Authorization"] = f"Bearer {self.settings.sms_webhook_bearer_token}"
+
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.post(
+                    self.settings.sms_webhook_url,
+                    headers=headers,
+                    json={
+                        "user_id": user_id,
+                        "phone_number": phone_number,
+                        "code": sms_code,
+                        "expires_in_seconds": 300,
+                    },
+                )
+                response.raise_for_status()
+
             logger.info("sms_code_generated", user_id=user_id, code=sms_code[:2] + "****")
             
-            return Response(
+            return JSONResponse(
                 content={
                     "success": True,
                     "message": "SMS code sent successfully",
                     "expires_in": 300  # 5 minutes
-                },
-                media_type="application/json"
+                }
             )
             
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error("sms_code_error", error=str(e))
             raise HTTPException(status_code=500, detail="SMS code generation failed")
@@ -268,10 +326,13 @@ class MFAMiddleware(BaseHTTPMiddleware):
             return False
         
         token_data = self.mfa_tokens[mfa_token]
+        user_id = self._resolve_user_id(request, required=False)
         
         # Check if token has expired
         if datetime.utcnow() > token_data["expires_at"]:
             del self.mfa_tokens[mfa_token]
+            return False
+        if user_id and token_data.get("user_id") != user_id:
             return False
         
         return True

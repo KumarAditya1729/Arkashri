@@ -26,6 +26,9 @@ from arkashri.services.opinion import generate_draft_opinion
 from arkashri.services.seal import generate_audit_seal
 from arkashri.services.esg import upsert_esg_metrics
 from arkashri.services.forensic import upsert_forensic_profile
+from arkashri.services.engagement_workflow import (
+    transition_engagement, WorkflowViolation, EngagementStatus
+)
 from arkashri.dependencies import require_api_client, AuthContext
 
 router = APIRouter()
@@ -36,7 +39,10 @@ async def create_new_engagement(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> EngagementOut:
-    engagement = await create_engagement(session, payload)
+    try:
+        engagement = await create_engagement(session, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return EngagementOut.model_validate(engagement)
 
 
@@ -115,8 +121,11 @@ async def generate_opinion(
     )
     return OpinionOut.model_validate(opinion)
 
+from arkashri.services.audit_log import log_system_event
+
 @router.post("/engagements/{engagement_id}/seal", status_code=status.HTTP_201_CREATED)
 async def seal_engagement(
+    request: Request,
     engagement_id: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
@@ -130,6 +139,20 @@ async def seal_engagement(
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
     try:
         seal_bundle = await generate_audit_seal(session, eid)
+        
+        # 🔗 Audit Proof: Log the seal operation with a cryptographic signature
+        await log_system_event(
+            session,
+            tenant_id=_auth.tenant_id,
+            user_id=_auth.user_id,
+            user_email=_auth.email,
+            action="ENGAGEMENT_SEALED",
+            resource_type="ENGAGEMENT",
+            resource_id=str(eid),
+            request=request,
+            extra_metadata={"seal_hash": seal_bundle.get("seal_hash")}
+        )
+
         return {"status": "success", "message": "Engagement sealed cryptographically.", "seal": seal_bundle}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -191,3 +214,51 @@ async def upsert_engagement_forensic(
         payload=payload,
     )
     return ForensicProfileOut.model_validate(record)
+
+
+@router.post(
+    "/engagements/{engagement_id}/transition",
+    response_model=EngagementOut,
+    summary="Transition Audit State",
+)
+async def transition_engagement_endpoint(
+    request: Request,
+    engagement_id: str,
+    payload: EngagementStatusUpdate,
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+) -> EngagementOut:
+    """
+    Triggers a state transition in the audit workflow engine.
+    Mandatory for SOC 2 Type II evidence.
+    """
+    try:
+        eid = uuid.UUID(engagement_id)
+        engagement = await transition_engagement(
+            session, 
+            engagement_id=eid, 
+            target_status=payload.status,
+            actor_id=str(_auth.user_id)
+        )
+        
+        # 🔗 Audit Proof: Log the transition
+        await log_system_event(
+            session,
+            tenant_id=_auth.tenant_id,
+            user_id=_auth.user_id,
+            user_email=_auth.email,
+            action="WORKFLOW_TRANSITION",
+            resource_type="ENGAGEMENT",
+            resource_id=str(eid),
+            request=request,
+            extra_metadata={
+                "from_status": engagement.status.value, # Status after transition is the new one
+                "target_status": payload.status.value
+            }
+        )
+
+        return EngagementOut.model_validate(engagement)
+    except (ValueError, WorkflowViolation) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

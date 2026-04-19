@@ -16,7 +16,6 @@ from arkashri.routers.usas import router as usas_router
 from arkashri.routers.reporting import router as reporting_router
 from arkashri.routers.jurisdictions import router as jurisdictions_router
 from arkashri.routers.playbooks import router as playbooks_router
-from arkashri.routers.mock_integrations import router as mock_integrations_router
 from arkashri.routers.auth import router as auth_router
 from arkashri.routers.overrides import router as overrides_router
 from arkashri.routers.risks import router as risks_router
@@ -29,6 +28,7 @@ from arkashri.routers.websockets import router as websockets_router
 from arkashri.routers.controls import router as controls_router
 from arkashri.routers.planning import router as planning_router
 from arkashri.routers.going_concern import router as going_concern_router
+from arkashri.routers.bank_ingestion import router as bank_ingestion_router
 
 router = APIRouter()
 
@@ -50,12 +50,12 @@ router.include_router(usas_router, prefix="/usas", tags=["Specialized Audits (US
 router.include_router(reporting_router, prefix="/reporting", tags=["Automated Reporting"])
 router.include_router(jurisdictions_router, prefix="/jurisdiction", tags=["Jurisdiction Mappings"])
 router.include_router(playbooks_router, prefix="/playbooks", tags=["Audit Playbooks"])
-router.include_router(mock_integrations_router, prefix="/mock", tags=["Mock Integrations"])
 router.include_router(overrides_router, prefix="/overrides", tags=["Professional Skepticism (Overrides)"])
 router.include_router(risks_router, prefix="", tags=["Risk Register"])
 router.include_router(evidence_router, prefix="", tags=["Evidence Management"])
 router.include_router(seal_sessions_router, prefix="", tags=["Multi-Partner Seal Sessions"])
 router.include_router(erp_ingestion_router, prefix="", tags=["ERP Integration"])
+router.include_router(bank_ingestion_router, prefix="", tags=["Bank Ingestion"])
 router.include_router(controls_router, prefix="", tags=["Controls Registry"])
 router.include_router(planning_router, prefix="", tags=["Audit Planning"])
 router.include_router(going_concern_router, prefix="", tags=["Going Concern (SA 570)"])

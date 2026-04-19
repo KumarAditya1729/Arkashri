@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { useAuthStore } from '../../store/authStore'
+import { register } from '@/lib/auth/client'
+import { sanitizeRedirectTarget } from '@/lib/auth/redirects'
+import { useAuthStore } from '@/store/authStore'
 import { Eye, EyeOff, Shield, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 const ROLES = [
@@ -44,7 +46,8 @@ function PasswordStrength({ password }: { password: string }) {
 
 export default function RegisterPage() {
     const router = useRouter()
-    const login = useAuthStore((s) => s.login)
+    const searchParams = useSearchParams()
+    const setSession = useAuthStore((s) => s.setSession)
 
     const [form, setForm] = useState({ fullName: '', email: '', organisation: '', role: 'auditor', password: '', confirm: '' })
     const [showPassword, setShowPassword] = useState(false)
@@ -62,17 +65,19 @@ export default function RegisterPage() {
         if (form.password.length < 8) return setError('Password must be at least 8 characters.')
 
         setLoading(true)
-        await new Promise((r) => setTimeout(r, 1000))
-
-        login({
-            id: crypto.randomUUID(),
-            fullName: form.fullName,
-            email: form.email.trim().toLowerCase(),
-            role: form.role as any,
-            organisation: form.organisation,
-            avatarInitials: form.fullName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2),
-        })
-        router.push('/dashboard')
+        try {
+            const session = await register({
+                fullName: form.fullName.trim(),
+                email: form.email.trim().toLowerCase(),
+                organisation: form.organisation.trim(),
+                role: form.role,
+                password: form.password,
+            })
+            setSession(session)
+            router.replace(sanitizeRedirectTarget(searchParams.get('from')))
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'Registration failed. Please try again.')
+        }
         setLoading(false)
     }
 

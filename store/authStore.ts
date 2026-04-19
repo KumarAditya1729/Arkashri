@@ -1,62 +1,88 @@
 'use client'
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { signIn as apiSignIn, clearAuth } from '@/lib/api'
-
-export type UserRole = 'admin' | 'operator' | 'reviewer' | 'auditor'
-
-export interface AuthUser {
-    id: string
-    fullName: string
-    email: string
-    role: UserRole
-    organisation: string
-    avatarInitials: string
-}
+import { getSession, signOut } from '@/lib/auth/client'
+import { AuthApiError } from '@/lib/auth/shared'
+import type { AuthSession, AuthUser } from '@/lib/auth/types'
 
 interface AuthState {
     user: AuthUser | null
-    isAuthenticated: boolean
-    backendLinked: boolean   // true when a real API token was issued
-    login: (user: AuthUser) => void
-    loginWithBackend: (email: string, password: string, fallbackUser: AuthUser) => Promise<void>
-    logout: () => void
+    status: 'loading' | 'authenticated' | 'unauthenticated'
+    initialized: boolean
+    initialize: (options?: { force?: boolean }) => Promise<void>
+    setSession: (session: AuthSession) => void
+    setUnauthenticated: () => void
+    logout: () => Promise<void>
 }
 
-export const useAuthStore = create<AuthState>()(
-    persist(
-        (set) => ({
-            user: null,
-            isAuthenticated: false,
-            backendLinked: false,
-            login: (user) => set({ user, isAuthenticated: true, backendLinked: false }),
-            loginWithBackend: async (email, password, fallbackUser) => {
-                try {
-                    const res = await apiSignIn(email, password)
-                    // Token is set automatically via HttpOnly cookie in /api/auth/login
+let initializePromise: Promise<void> | null = null
+
+export const useAuthStore = create<AuthState>()((set, get) => ({
+    user: null,
+    status: 'loading',
+    initialized: false,
+    initialize: async ({ force = false } = {}) => {
+        if (!force && get().initialized) {
+            return
+        }
+
+        if (initializePromise) {
+            return initializePromise
+        }
+
+        if (!get().initialized) {
+            set({ status: 'loading' })
+        }
+
+        initializePromise = (async () => {
+            try {
+                const session = await getSession()
+                set({
+                    user: session.user,
+                    status: 'authenticated',
+                    initialized: true,
+                })
+            } catch (error) {
+                if (error instanceof AuthApiError && error.status === 401) {
                     set({
-                        isAuthenticated: true,
-                        backendLinked: true,
-                        user: {
-                            id: res.user.email,
-                            fullName: res.user.full_name,
-                            email: res.user.email,
-                            role: res.user.role as UserRole,
-                            organisation: 'Arkashri Systems',
-                            avatarInitials: res.user.initials,
-                        },
+                        user: null,
+                        status: 'unauthenticated',
+                        initialized: true,
                     })
-                } catch {
-                    // Backend unreachable — fall back to local auth, don't block login
-                    set({ user: fallbackUser, isAuthenticated: true, backendLinked: false })
+                    return
                 }
-            },
-            logout: () => {
-                clearAuth()
-                set({ user: null, isAuthenticated: false, backendLinked: false })
-            },
-        }),
-        { name: 'arkashri-auth' }
-    )
-)
+
+                set((state) => ({
+                    user: state.user,
+                    status: state.user ? 'authenticated' : 'unauthenticated',
+                    initialized: true,
+                }))
+            } finally {
+                initializePromise = null
+            }
+        })()
+
+        return initializePromise
+    },
+    setSession: (session) => set({
+        user: session.user,
+        status: 'authenticated',
+        initialized: true,
+    }),
+    setUnauthenticated: () => set({
+        user: null,
+        status: 'unauthenticated',
+        initialized: true,
+    }),
+    logout: async () => {
+        try {
+            await signOut()
+        } finally {
+            set({
+                user: null,
+                status: 'unauthenticated',
+                initialized: true,
+            })
+        }
+    },
+}))

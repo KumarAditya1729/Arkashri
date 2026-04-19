@@ -8,6 +8,8 @@ from arkashri.models import SystemAuditLog
 
 logger = structlog.get_logger("services.audit_log")
 
+from arkashri.services.evidence import evidence_service
+
 async def log_system_event(
     db: AsyncSession,
     *,
@@ -22,36 +24,19 @@ async def log_system_event(
     request: Any | None = None, # FastAPI Request object
 ):
     """
-    Creates a new entry in the system_audit_log table.
-    Captures request context (IP, User-Agent, Request-ID) automatically if request is provided.
+    Upgraded: Creates and cryptographically signs an entry in the system_audit_log table.
+    Ensures SOC 2 / ISO 27001 proof-of-enforcement compliance.
     """
-    request_id = None
-    ip_address = None
-    user_agent = None
-    
-    if request:
-        request_id = request.headers.get("X-Request-ID")
-        ip_address = request.client.host if request.client else None
-        user_agent = request.headers.get("User-Agent")
-
-    event = SystemAuditLog(
-        tenant_id=tenant_id,
-        user_id=user_id,
-        user_email=user_email,
+    await evidence_service.emit_signed_audit_event(
+        session=db,
+        request=request,
         action=action,
         resource_type=resource_type,
         resource_id=resource_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        user_email=user_email,
         status=status,
-        extra_metadata=extra_metadata,
-        request_id=request_id,
-        ip_address=ip_address,
-        user_agent=user_agent,
+        metadata=extra_metadata
     )
-    
-    db.add(event)
-    try:
-        await db.commit()
-        logger.info("system_event_logged", action=action, tenant_id=tenant_id, user=user_email)
-    except Exception as e:
-        logger.error("system_event_logging_failed", error=str(e))
-        await db.rollback()
+    # The evidence_service handles session.add and session.commit/flush

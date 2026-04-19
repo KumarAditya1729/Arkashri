@@ -2,7 +2,6 @@
 import pytest
 import pytest_asyncio
 import asyncio
-from unittest.mock import AsyncMock, patch
 
 @pytest.fixture(scope="session", autouse=True)
 def event_loop():
@@ -16,21 +15,6 @@ import arkashri.models
 import arkashri.routers.risks    # contains RiskEntry
 import arkashri.routers.evidence # contains EvidenceRecord
 
-@pytest_asyncio.fixture
-async def mock_redis():
-    with patch("arkashri.services.risk_engine.cache_get", new_callable=AsyncMock) as mock_get, \
-         patch("arkashri.services.risk_engine.cache_set", new_callable=AsyncMock) as mock_set:
-        mock_get.return_value = None
-        mock_set.return_value = None
-        yield {"get": mock_get, "set": mock_set}
-
-@pytest_asyncio.fixture
-async def mock_session():
-    session = AsyncMock()
-    # Mock the scalar / scalars chaining behavior
-    session.scalar.return_value = None
-    session.scalars.return_value = []
-    return session
 @pytest_asyncio.fixture
 async def async_client(db_session):
     from httpx import AsyncClient, ASGITransport
@@ -49,15 +33,15 @@ async def async_client(db_session):
     app.dependency_overrides.clear()
 
 @pytest_asyncio.fixture
-async def db_session():
+async def db_session(tmp_path):
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-    from arkashri.config import get_settings
     from arkashri.db import Base
     
-    settings = get_settings()
-    # Create fresh engine for this test function to avoid loop conflicts
-    # Using a pool size of 1 for tests to minimize resource usage
-    test_engine = create_async_engine(settings.database_url)
+    db_path = tmp_path / "arkashri-test.db"
+    test_engine = create_async_engine(
+        f"sqlite+aiosqlite:///{db_path}",
+        connect_args={"check_same_thread": False},
+    )
     
     # Clean state: drop everything first, then create
     async with test_engine.begin() as conn:

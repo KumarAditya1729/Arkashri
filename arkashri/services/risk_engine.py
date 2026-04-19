@@ -34,6 +34,7 @@ class RiskComputationResult:
     model_versions: list[dict[str, Any]]
     components: list[ComputedComponent]
     confidence_breakdown: dict[str, float]
+    trace_log: list[str]
 
     def components_as_dicts(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
@@ -300,6 +301,7 @@ async def compute_risk(
         field_collector: set[str] = set()
 
         snapshot: list[dict[str, Any]] = []
+        trace_log: list[str] = []
         
         with tracer.start_as_current_span("evaluate_deterministic_rules") as det_span:
             det_span.set_attribute("rules.count", len(rules))
@@ -324,6 +326,7 @@ async def compute_risk(
 
                 if matched:
                     min_risk_floor = max(min_risk_floor, rule.severity_floor)
+                    trace_log.append(f"Rule '{rule.name}' matched ({rule.rule_key}): Contributing {contribution:.2f} to risk.")
 
                 snapshot.append({"rule_key": rule.rule_key, "version": rule.version, "matched": matched})
 
@@ -348,6 +351,9 @@ async def compute_risk(
                         contribution=contribution,
                     )
                 )
+
+                if normalized > 0:
+                    trace_log.append(f"ML Signal '{key}' detected: Normalized value {normalized:.4f} contributing {contribution:.2f} to risk.")
 
                 if signal.get("model_key") and signal.get("model_version") is not None:
                     model_key = str(signal["model_key"])
@@ -420,6 +426,7 @@ async def compute_risk(
             model_versions=sorted(model_versions.values(), key=lambda item: (item["model_key"], item["version"])),
             components=components,
             confidence_breakdown=confidence_breakdown,
+            trace_log=trace_log,
         )
 
 

@@ -1,38 +1,57 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
-import { useAuthStore } from '../../store/authStore'
+import { useEffect } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
-const PUBLIC_ROUTES = ['/sign-in', '/register']
+import { AUTH_SESSION_INVALID_EVENT } from '@/lib/auth/constants'
+import { buildRouteTarget, isPublicRoute, sanitizeRedirectTarget } from '@/lib/auth/redirects'
+import { useAuthStore } from '@/store/authStore'
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-    const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+    const status = useAuthStore((s) => s.status)
+    const initialized = useAuthStore((s) => s.initialized)
+    const initialize = useAuthStore((s) => s.initialize)
+    const setUnauthenticated = useAuthStore((s) => s.setUnauthenticated)
     const router = useRouter()
     const pathname = usePathname()
-    const [isMounted, setIsMounted] = useState(false)
+    const searchParams = useSearchParams()
+    const search = searchParams.toString()
+    const publicRoute = isPublicRoute(pathname)
 
     useEffect(() => {
-        setIsMounted(true)
-    }, [])
+        void initialize()
+    }, [initialize])
 
     useEffect(() => {
-        if (isMounted && !isAuthenticated && !PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
-            router.replace(`/sign-in?from=${encodeURIComponent(pathname)}`)
+        const handleSessionInvalid = () => {
+            setUnauthenticated()
         }
-    }, [isMounted, isAuthenticated, pathname, router])
 
-    // Prevent hydration mismatch: wait for client mount
-    if (!isMounted) {
-        // If it's a public route, it's safe to server-render
-        if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
-            return <>{children}</>
+        window.addEventListener(AUTH_SESSION_INVALID_EVENT, handleSessionInvalid)
+        return () => window.removeEventListener(AUTH_SESSION_INVALID_EVENT, handleSessionInvalid)
+    }, [setUnauthenticated])
+
+    useEffect(() => {
+        if (!initialized) {
+            return
         }
-        // Protected routes return nothing during SSR to avoid flashing unauthorized content
+
+        if (status === 'unauthenticated' && !publicRoute) {
+            const target = buildRouteTarget(pathname, search)
+            router.replace(`/sign-in?from=${encodeURIComponent(target)}`)
+            return
+        }
+
+        if (status === 'authenticated' && publicRoute) {
+            router.replace(sanitizeRedirectTarget(searchParams.get('from')))
+        }
+    }, [initialized, pathname, publicRoute, router, search, searchParams, status])
+
+    if (!publicRoute && (!initialized || status === 'loading' || status === 'unauthenticated')) {
         return null
     }
 
-    if (!isAuthenticated && !PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
+    if (publicRoute && initialized && status === 'authenticated') {
         return null
     }
 

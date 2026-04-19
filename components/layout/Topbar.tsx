@@ -9,13 +9,14 @@ import { useAuthStore } from '../../store/authStore'
 import { useState } from 'react'
 
 export function Topbar() {
-    const { user, logout } = useAuthStore()
+    const user = useAuthStore((s) => s.user)
+    const logout = useAuthStore((s) => s.logout)
     const router = useRouter()
     const [showUserMenu, setShowUserMenu] = useState(false)
 
-    const handleLogout = () => {
-        logout()
-        router.push('/sign-in')
+    const handleLogout = async () => {
+        await logout()
+        router.replace('/sign-in')
     }
 
     return (

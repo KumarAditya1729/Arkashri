@@ -16,7 +16,7 @@ KEY_PREFIX = "ark"
 
 @dataclass
 class AuthContext:
-    client_id: int | None
+    client_id: str | int | None
     client_name: str
     role: ClientRole
     tenant_id: str

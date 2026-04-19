@@ -49,6 +49,7 @@ SYSTEM_VERSION = "Arkashri_OS_2.0_Enterprise"
 class CreateSealSessionRequest(BaseModel):
     required_signatures: int = Field(default=2, ge=1, le=5, description="Number of partner signatures required before sealing (default 2: Engagement Partner + EQCR)")
     created_by: str = Field(default="system", description="User ID creating the session")
+    partner_emails: list[str] = Field(default_factory=list, description="Notification recipients for seal approvals")
 
 
 class SignRequest(BaseModel):
@@ -224,13 +225,13 @@ async def create_seal_session(
         extra_metadata={"session_id": str(sess.id), "required_signatures": payload.required_signatures}
     )
 
-    # Enqueue notification for partners (mock)
-    if hasattr(request.app.state, "redis_pool") and request.app.state.redis_pool:
+    notification_recipients = [email.strip() for email in payload.partner_emails if email.strip()]
+    if hasattr(request.app.state, "redis_pool") and request.app.state.redis_pool and notification_recipients:
         await request.app.state.redis_pool.enqueue_job(
             "send_email_task",
-            to_email="partners@arkashri-demo.io",
+            notification_recipients,
             subject=f"Action Required: Seal Session Created for {eng.client_name}",
-            body=f"A new seal session has been created for engagement {engagement_id}. Please review and sign."
+            body_text=f"A new seal session has been created for engagement {engagement_id}. Please review and sign.",
         )
 
     return _to_session_out(sess)

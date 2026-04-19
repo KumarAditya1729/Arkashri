@@ -24,30 +24,41 @@ class Settings(BaseSettings):
     db_max_overflow: int = 5
     redis_url: str = "redis://localhost:6379/0"
     app_env: str = "dev"
+    enable_mock_data: bool = False
     auth_enforced: bool = False
     bootstrap_admin_token: str = "arkashri-bootstrap"
     jwt_algorithm: str = "HS256"
-    jwt_expiry_minutes: int = 60
+    jwt_expiry_minutes: int = 15
+    refresh_token_expiry_days: int = 7
+    ws_ticket_expiry_seconds: int = 30
 
     independence_webhook_url: str | None = None
+    hash_notary_url: str | None = None
+    hash_notary_api_key: str | None = None
+    hash_notary_timeout_seconds: int = 15
 
     polkadot_enabled: bool = False
     polkadot_ws_url: str = "wss://rpc.polkadot.io"
     polkadot_keypair_uri: str | None = None
     polkadot_wait_for_inclusion: bool = True
+    ethereum_rpc_url: str | None = None
+    ethereum_private_key: str | None = None
+    polygon_rpc_url: str | None = None
+    polygon_private_key: str | None = None
 
     # OAuth2 / OIDC Config
     oauth_client_id: str | None = None
     oauth_client_secret: str | None = None
     oauth_server_metadata_url: str | None = None
-    # REQUIRED — no default. App will fail fast at startup if not set.
+    # REQUIRED — no default. App will fail fast at startup if not set in production.
     # Generate: python3 -c "import secrets; print(secrets.token_hex(32))"
-    session_secret_key: str = "super-secret-session-key-for-dev"   # overridden by .env
+    session_secret_key: str | None = None
 
     # ── Cryptographic Seal (HMAC key) ─────────────────────────────────────────
     # Set to a base64-encoded 32-byte key in production (AWS KMS / HashiCorp Vault)
-    # If unset, falls back to the insecure dev constant in seal.py (_KEY_REGISTRY)
+    # If unset, the system will fail to seal records.
     seal_key_v1: str | None = None
+    kms_provider: str = "env"  # Options: env, aws, gcp
 
     # ── S3 WORM Archive ───────────────────────────────────────────────────────
     s3_worm_bucket: str | None = None         # e.g. "arkashri-audit-worm"
@@ -61,6 +72,8 @@ class Settings(BaseSettings):
     smtp_user: str | None = None
     smtp_password: str | None = None
     smtp_from: str = "audit@arkashri.io"
+    sms_webhook_url: str | None = None
+    sms_webhook_bearer_token: str | None = None
 
     # ── ERP credential encryption ─────────────────────────────────────────────
     # AES-256 key for encrypting connection_config in erp_connection table
@@ -82,8 +95,11 @@ class Settings(BaseSettings):
     # ── File Storage ──────────────────────────────────────────────────────────────
     storage_provider: str = "local"
     upload_dir: str = "./uploads"
+    evidence_s3_bucket: str | None = None
     max_file_size: int = 52428800
-    allowed_file_types: str = "application/pdf,image/jpeg,image/png,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    allowed_file_types: str = "application/pdf,image/jpeg,image/png,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    erp_request_timeout_seconds: int = 30
+    bank_csv_max_rows: int = 10000
 
     # ── Production Settings ───────────────────────────────────────────────────────
     # Database connection settings
@@ -140,6 +156,12 @@ class Settings(BaseSettings):
     enable_compression: bool = True
     enable_request_id: bool = True
     enable_user_context: bool = True
+
+    def validate_runtime_configuration(self) -> None:
+        env = self.app_env.strip().lower()
+
+        if env in {"prod", "production"} and self.enable_mock_data:
+            raise RuntimeError("ENABLE_MOCK_DATA must remain false in production environments.")
 
 
 @lru_cache

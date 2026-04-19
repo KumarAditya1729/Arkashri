@@ -1,7 +1,12 @@
-import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8001'
+import { applyAuthCookies, clearAuthCookies } from '@/lib/auth/cookies'
+import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from '@/lib/auth/constants'
+import { AuthApiError, getBackendBaseUrl, refreshTokenPair } from '@/lib/auth/shared'
+import type { BackendAuthResponse } from '@/lib/auth/types'
+
+const BACKEND_URL = getBackendBaseUrl()
 
 export async function GET(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
     const { path } = await params
@@ -34,37 +39,72 @@ async function handleProxy(request: Request, path: string) {
     const targetUrl = `${BACKEND_URL.replace(/\/+$/, '')}/${apiPath}${searchParams}`
 
     const cookieStore = await cookies()
-    const token = cookieStore.get('arkashri_token')?.value
+    const initialAccessToken = cookieStore.get(ACCESS_COOKIE_NAME)?.value
+    const refreshToken = cookieStore.get(REFRESH_COOKIE_NAME)?.value
 
-    const headers = new Headers(request.headers)
-    headers.delete('host')
-    headers.delete('connection')
-    if (token) {
-        headers.set('Authorization', `Bearer ${token}`)
+    const buildHeaders = (accessToken?: string) => {
+        const headers = new Headers(request.headers)
+        headers.delete('authorization')
+        headers.delete('connection')
+        headers.delete('content-length')
+        headers.delete('cookie')
+        headers.delete('host')
+
+        if (accessToken) {
+            headers.set('Authorization', `Bearer ${accessToken}`)
+        }
+
+        return headers
     }
 
     try {
-        const body = request.method !== 'GET' ? await request.arrayBuffer() : undefined
+        const requestBody = !['GET', 'HEAD'].includes(request.method) ? await request.arrayBuffer() : undefined
 
-        const res = await fetch(targetUrl, {
+        const forward = async (accessToken?: string) => fetch(targetUrl, {
             method: request.method,
-            headers,
-            body,
-            // Skip cache in dev/production to ensure fresh audit data
+            headers: buildHeaders(accessToken),
+            body: requestBody,
             cache: 'no-store',
         })
+
+        let res = await forward(initialAccessToken)
+        let refreshedTokens: BackendAuthResponse | null = null
+        let shouldClearCookies = false
+        let authRejected = res.status === 401 && !refreshToken
+
+        if (res.status === 401 && refreshToken) {
+            try {
+                refreshedTokens = await refreshTokenPair(refreshToken)
+                res = await forward(refreshedTokens.access_token)
+                authRejected = res.status === 401
+            } catch (error) {
+                shouldClearCookies = error instanceof AuthApiError && error.status === 401
+                authRejected = shouldClearCookies
+            }
+        }
 
         const resBody = await res.arrayBuffer()
         const responseHeaders = new Headers(res.headers)
         // Remove headers that might cause issues when proxied
         responseHeaders.delete('content-encoding')
+        responseHeaders.delete('set-cookie')
         responseHeaders.delete('transfer-encoding')
 
-        return new Response(resBody, {
+        const response = new NextResponse(resBody, {
             status: res.status,
             statusText: res.statusText,
             headers: responseHeaders,
         })
+
+        if (refreshedTokens) {
+            applyAuthCookies(response, refreshedTokens)
+        }
+
+        if (shouldClearCookies || authRejected) {
+            clearAuthCookies(response)
+        }
+
+        return response
     } catch (error) {
         console.error(`Proxy error for ${targetUrl}:`, error)
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

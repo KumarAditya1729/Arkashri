@@ -5,9 +5,9 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: arkashri
-      POSTGRES_USER: arkashri
-      POSTGRES_PASSWORD: arkashri
+      POSTGRES_DB: ${POSTGRES_DB:-arkashri}
+      POSTGRES_USER: ${POSTGRES_USER:-arkashri}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5440:5432"
     volumes:
@@ -22,9 +22,9 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: arkashri_replica
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_REPLICA_DB:-arkashri_replica}
+      POSTGRES_USER: ${POSTGRES_REPLICA_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_REPLICA_PASSWORD}
     ports:
       - "5441:5432"
     volumes:
@@ -56,8 +56,8 @@ services:
       - "8001:8080"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://arkashri:arkashri@db:5432/arkashri
-      DATABASE_READ_REPLICA_URL: postgresql+asyncpg://postgres:postgres@read_replica:5432/arkashri_replica
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_READ_REPLICA_URL: ${DATABASE_READ_REPLICA_URL}
       REDIS_URL: redis://redis:6379/0
       ENABLE_ADVANCED_RATE_LIMITING: "true"
       ENABLE_LOAD_BALANCER: "true"
@@ -128,9 +128,9 @@ services:
       dockerfile: Dockerfile
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://arkashri:arkashri@db:5432/arkashri
-      SEED_EMAIL: admin@arkashri.io
-      SEED_PASSWORD: Admin@2026!
+      DATABASE_URL: ${DATABASE_URL}
+      SEED_EMAIL: ${SEED_EMAIL:-admin@arkashri.io}
+      SEED_PASSWORD: ${SEED_PASSWORD}
       SEED_TENANT: default_tenant
     depends_on:
       api:

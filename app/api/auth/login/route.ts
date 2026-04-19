@@ -1,40 +1,27 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+import { applyAuthCookies } from '@/lib/auth/cookies'
+import { AuthApiError, buildAuthSession, requestTokenPair } from '@/lib/auth/shared'
+
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' }
 
 export async function POST(request: Request) {
     try {
         const body = await request.json()
-        const { email, password } = body
+        const tokens = await requestTokenPair(body.email, body.password)
 
-        const res = await fetch(`${BACKEND_URL}/api/v1/token/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
+        const response = NextResponse.json(buildAuthSession(tokens.user), {
+            headers: NO_STORE_HEADERS,
         })
+        applyAuthCookies(response, tokens)
 
-        if (!res.ok) {
-            const error = await res.text()
-            return NextResponse.json({ error }, { status: res.status })
+        return response
+    } catch (error) {
+        if (error instanceof AuthApiError) {
+            return NextResponse.json({ error: error.message }, { status: error.status, headers: NO_STORE_HEADERS })
         }
 
-        const data = await res.json()
-        const { access_token } = data
-
-        // Set HttpOnly cookie
-        const cookieStore = await cookies()
-        cookieStore.set('arkashri_token', access_token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            path: '/',
-            maxAge: 60 * 60 * 24, // 24 hours
-        })
-
-        return NextResponse.json(data)
-    } catch (error) {
         console.error('Auth proxy error:', error)
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500, headers: NO_STORE_HEADERS })
     }
 }

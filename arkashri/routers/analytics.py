@@ -7,16 +7,17 @@ from __future__ import annotations
 
 import uuid
 from typing import Dict, List, Any
+
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
-import structlog
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 
 from arkashri.services.ml_analytics import ml_analytics_service
 from arkashri.services.ai_fabric import generate_contextual_insight
 from arkashri.dependencies import get_current_user, get_session
-from arkashri.models import Engagement, RiskEntry
+from arkashri.models import Engagement, EvidenceRecord, ModelRegistry, ModelStatus, ReportJob, RiskEntry, RiskStatus
 
 logger = structlog.get_logger(__name__)
 
@@ -64,6 +65,9 @@ async def get_contextual_lens(
 
     except HTTPException:
         raise  # Re-raise HTTP exceptions (e.g., 404) unchanged
+    except RuntimeError as e:
+        logger.warning("contextual_lens_provider_unavailable", error=str(e), user_id=current_user.get("id"))
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.error("contextual_lens_api_error", error=str(e), user_id=current_user.get("id"))
         raise HTTPException(status_code=500, detail=f"Failed to generate contextual insight: {str(e)}")
@@ -174,33 +178,79 @@ async def train_models(
         raise HTTPException(status_code=500, detail="Failed to start model training")
 
 @router.get("/overview")
-async def get_analytics_overview(current_user: Dict = Depends(get_current_user)):
+async def get_analytics_overview(
+    session: AsyncSession = Depends(get_session),
+    current_user: Dict = Depends(get_current_user),
+):
     """Get analytics overview summary"""
     try:
-        # Mock overview data - in production, fetch from database
+        total_anomalies = int(await session.scalar(select(func.count(RiskEntry.id))) or 0)
+        high_severity = int(
+            await session.scalar(select(func.count(RiskEntry.id)).where(RiskEntry.risk_score >= 0.8)) or 0
+        )
+        medium_severity = int(
+            await session.scalar(
+                select(func.count(RiskEntry.id)).where(
+                    RiskEntry.risk_score >= 0.5,
+                    RiskEntry.risk_score < 0.8,
+                )
+            )
+            or 0
+        )
+        low_severity = max(total_anomalies - high_severity - medium_severity, 0)
+
+        latest_risk_model = await session.scalar(
+            select(ModelRegistry)
+            .where(ModelRegistry.status == ModelStatus.ACTIVE, ModelRegistry.purpose.ilike("%risk%"))
+            .order_by(ModelRegistry.created_at.desc())
+            .limit(1)
+        )
+        latest_model = await session.scalar(
+            select(ModelRegistry).order_by(ModelRegistry.created_at.desc()).limit(1)
+        )
+
+        upcoming_risks = int(
+            await session.scalar(
+                select(func.count(RiskEntry.id)).where(
+                    RiskEntry.risk_status.in_([RiskStatus.OPEN, RiskStatus.IN_REVIEW]),
+                    RiskEntry.risk_score >= 0.8,
+                )
+            )
+            or 0
+        )
+        documents_analyzed = int(await session.scalar(select(func.count(EvidenceRecord.id))) or 0)
+        total_reports = int(await session.scalar(select(func.count(ReportJob.id))) or 0)
+
+        model_accuracy = None
+        if latest_risk_model and isinstance(latest_risk_model.metrics, dict):
+            accuracy_value = latest_risk_model.metrics.get("accuracy")
+            if isinstance(accuracy_value, (int, float)):
+                model_accuracy = float(accuracy_value)
+
         return {
             "anomaly_detection": {
-                "total_anomalies": 12,
-                "high_severity": 3,
-                "medium_severity": 7,
-                "low_severity": 2
+                "total_anomalies": total_anomalies,
+                "high_severity": high_severity,
+                "medium_severity": medium_severity,
+                "low_severity": low_severity,
             },
             "risk_prediction": {
-                "predictions_available": True,
-                "model_accuracy": 0.87,
-                "prediction_horizon_days": 30,
-                "upcoming_risks": 5
+                "predictions_available": latest_risk_model is not None,
+                "model_accuracy": model_accuracy,
+                "prediction_horizon_days": ml_analytics_service.prediction_horizon,
+                "upcoming_risks": upcoming_risks,
             },
             "sentiment_analysis": {
-                "overall_sentiment": "positive",
-                "confidence": 0.78,
-                "documents_analyzed": 156
+                "overall_sentiment": None,
+                "confidence": None,
+                "documents_analyzed": documents_analyzed,
             },
             "model_performance": {
-                "anomaly_detector": "active",
-                "risk_predictor": "trained",
-                "last_training": "2026-03-09T10:30:00Z"
-            }
+                "anomaly_detector": "active" if ml_analytics_service.anomaly_detector else "not_loaded",
+                "risk_predictor": "trained" if latest_risk_model else "not_trained",
+                "last_training": latest_model.created_at.isoformat() if latest_model else None,
+                "reports_generated": total_reports,
+            },
         }
     except Exception as e:
         logger.error("analytics_overview_error", error=str(e), user_id=current_user.get("id"))

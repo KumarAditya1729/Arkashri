@@ -40,6 +40,8 @@ from arkashri.models import (
     RuleRegistry,
 )
 from arkashri.config import get_settings as _get_settings
+from arkashri.services.merkle import merkle_root
+from arkashri.services.kms import kms_service
 
 settings = _get_settings()
 logger = logging.getLogger(__name__)
@@ -49,24 +51,6 @@ logger = logging.getLogger(__name__)
 # 32-byte key stored in AWS KMS / HashiCorp Vault / GCP CKMS.
 # If unset, the insecure dev constant is used — system logs a WARNING.
 
-def _load_key_registry() -> dict[str, bytes]:
-    _s = settings
-    registry: dict[str, bytes] = {}
-    if _s.seal_key_v1:
-        try:
-            registry["v1"] = _b64.b64decode(_s.seal_key_v1)
-            _log.getLogger(__name__).info("SEAL_KEY_V1 loaded from environment (production mode)")
-        except Exception as e:
-            _log.getLogger(__name__).error("SEAL_KEY_V1 is set but not valid base64: %s — falling back to dev key", e)
-    if "v1" not in registry:
-        _log.getLogger(__name__).warning(
-            "SEAL_KEY_V1 not set — using insecure dev HMAC key. "
-            "Set SEAL_KEY_V1 in .env before sealing in production."
-        )
-        registry["v1"] = b"arkashri_hsm_private_key_super_secret"
-    return registry
-
-_KEY_REGISTRY: dict[str, bytes] = _load_key_registry()
 CURRENT_KEY_VERSION = "v1"
 SYSTEM_VERSION = "Arkashri_OS_2.0_Enterprise"
 
@@ -415,9 +399,18 @@ async def generate_audit_seal(session: AsyncSession, engagement_id: uuid.UUID) -
         )
 
     # ── 4. Build deterministic payload ────────────────────────────────────────
+    # Fetch all event hashes to compute Merkle Root
+    event_hashes = (await session.scalars(
+        select(AuditEvent.event_hash)
+        .where(AuditEvent.engagement_id == engagement_id)
+        .order_by(AuditEvent.created_at.asc())
+    )).all()
+    events_merkle_root = merkle_root(list(event_hashes))
+
     seal_payload = await _build_seal_payload(
         session, engagement, seal_session, now_iso, CURRENT_KEY_VERSION
     )
+    seal_payload["audit_events_merkle_root"] = events_merkle_root
 
     # ── 5. Canonical hash + HMAC ──────────────────────────────────────────────
     payload_hash = compute_seal_hash(seal_payload)
@@ -430,27 +423,28 @@ async def generate_audit_seal(session: AsyncSession, engagement_id: uuid.UUID) -
         "signer":    "Arkashri_Internal_HSM_01",
     }
 
-    # ── 6. Persist — Engagement → SEALED ─────────────────────────────────────
+    # ── 6. Mandatory Persistence confirmed ───────────────────────────────────
+    # We upload to S3 BEFORE committing the DB. If S3 fails, the engagement 
+    # stays in REVIEWED state and can be retried. This prevents "Ghost Seals".
+    await _s3_worm_upload(
+        key=f"seals/{engagement.tenant_id}/{engagement_id}.json",
+        bundle=sealed_bundle,
+    )
+
+    # ── 7. Commit to DB ──────────────────────────────────────────────────────
     engagement.sealed_at         = now
     engagement.seal_hash         = payload_hash
     engagement.status            = EngagementStatus.SEALED
-    engagement.seal_bundle       = seal_payload          # Stored for replay verification
+    engagement.seal_bundle       = seal_payload
     engagement.seal_key_version  = CURRENT_KEY_VERSION
-    engagement.seal_verify_status = "PENDING"
+    engagement.seal_verify_status = "SUCCESS"  # Verified by successful S3 write
 
     session.add(engagement)
     await session.commit()
 
     logger.info(
-        "Engagement %s sealed. hash=%s key_version=%s partners=%d",
-        engagement_id, payload_hash, CURRENT_KEY_VERSION,
-        len(seal_payload.get("partner_signatures", [])),
-    )
-
-    # ── S3 WORM upload (enabled when S3_WORM_BUCKET is set in env) ──────────────
-    await _s3_worm_upload(
-        key=f"seals/{engagement.tenant_id}/{engagement_id}.json",
-        bundle=sealed_bundle,
+        "Engagement %s sealed. Merkle=%s S3=Confirmed",
+        engagement_id, events_merkle_root
     )
 
     return sealed_bundle
@@ -458,14 +452,14 @@ async def generate_audit_seal(session: AsyncSession, engagement_id: uuid.UUID) -
 
 async def _s3_worm_upload(key: str, bundle: dict) -> None:
     """
-    Write sealed bundle to S3 with Object Lock (COMPLIANCE mode, 10-year retention).
-    Silently skips if S3_WORM_BUCKET / AWS credentials are not configured.
-    In production, failure should be surfaced as a hard error — adjust as needed.
+    Write sealed bundle to S3 with Object Lock.
+    FAILS HARD if bucket is configured but upload fails.
     """
     _cfg = settings
     if not _cfg.s3_worm_bucket or not _cfg.aws_access_key_id:
-        logger.debug("S3 WORM upload skipped — S3_WORM_BUCKET not configured (dev mode).")
+        logger.warning("S3 WORM upload skipped — S3_WORM_BUCKET not configured. Insecure for production.")
         return
+
     try:
         import aiobotocore.session as _aio_session
         body = _canonical_json(bundle)

@@ -1,16 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { useAuthStore } from '../../store/authStore'
+import { signIn } from '@/lib/auth/client'
+import { sanitizeRedirectTarget } from '@/lib/auth/redirects'
+import { useAuthStore } from '@/store/authStore'
 import { Eye, EyeOff, Shield, Loader2, AlertCircle } from 'lucide-react'
-
-// Frontend auth falls through to backend router
 
 export default function SignInPage() {
     const router = useRouter()
-    const loginWithBackend = useAuthStore((s) => s.loginWithBackend)
+    const searchParams = useSearchParams()
+    const setSession = useAuthStore((s) => s.setSession)
 
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -24,17 +25,11 @@ export default function SignInPage() {
         setLoading(true)
 
         try {
-            await loginWithBackend(email.trim().toLowerCase(), password, {
-                id: crypto.randomUUID(),
-                fullName: email.split('@')[0],
-                email: email.trim().toLowerCase(),
-                role: 'auditor',
-                organisation: 'Arkashri Systems',
-                avatarInitials: email.substring(0, 2).toUpperCase(),
-            })
-            router.push('/dashboard')
-        } catch {
-            setError('Authentication failed. Please check your credentials and backend connection.')
+            const session = await signIn(email.trim().toLowerCase(), password)
+            setSession(session)
+            router.replace(sanitizeRedirectTarget(searchParams.get('from')))
+        } catch (error) {
+            setError(error instanceof Error ? error.message : 'Authentication failed. Please check your credentials.')
         }
         setLoading(false)
     }

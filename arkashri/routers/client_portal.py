@@ -9,9 +9,11 @@ from pydantic import BaseModel, EmailStr
 from arkashri.dependencies import get_session, require_api_client
 from arkashri.models import ClientRole
 from arkashri.services.security import AuthContext
+from arkashri.services.email import send_email
 from arkashri.models import (
     Engagement, 
     ClientPortalAccess, 
+    ClientPortalNotificationSubscription,
     AuditRun, 
     ProfessionalJudgment,
 )
@@ -50,7 +52,6 @@ async def generate_portal_access(
     session.add(access)
     await session.commit()
     
-    # In a real system, we would email this token/link to the client here.
     return {
         "status": "success",
         "engagement_id": str(engagement_id),
@@ -202,12 +203,47 @@ async def subscribe_to_milestones(
     """
     (External) Allows a client to subscribe to email alerts for major audit milestones.
     """
-    await verify_portal_token(token, session)
-    
-    # In a full implementation, this might insert into a `NotificationPreference` table.
-    # For now, we mock the success.
-    
+    access = await verify_portal_token(token, session)
+
+    if payload.email.lower() != access.client_email.lower():
+        raise HTTPException(status_code=400, detail="Subscription email must match the portal access email")
+
+    subscription = await session.scalar(
+        select(ClientPortalNotificationSubscription).where(
+            ClientPortalNotificationSubscription.engagement_id == access.engagement_id,
+            ClientPortalNotificationSubscription.email == payload.email,
+        )
+    )
+    now = datetime.datetime.now(datetime.timezone.utc)
+    created = False
+    if subscription is None:
+        subscription = ClientPortalNotificationSubscription(
+            engagement_id=access.engagement_id,
+            email=payload.email,
+            is_active=True,
+            confirmed_at=now,
+        )
+        session.add(subscription)
+        created = True
+    else:
+        subscription.is_active = True
+        subscription.confirmed_at = now
+        session.add(subscription)
+
+    await session.commit()
+
+    email_dispatched = await send_email(
+        to_addresses=[payload.email],
+        subject="Arkashri portal milestone notifications enabled",
+        body_text=(
+            "Milestone notifications have been enabled for your engagement portal access. "
+            "You will receive updates when major audit milestones are recorded."
+        ),
+    )
+
     return {
         "status": "success",
-        "message": f"Successfully subscribed {payload.email} to milestone alerts for this engagement."
+        "subscription_created": created,
+        "email_delivery_configured": email_dispatched,
+        "message": f"Milestone notifications are active for {payload.email}.",
     }

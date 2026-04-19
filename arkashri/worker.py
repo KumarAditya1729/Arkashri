@@ -120,9 +120,15 @@ async def ingest_erp_batch_task(
     jurisdiction: str,
     records: list[dict],
     sync_log_id: str,
+    source: str,
 ):
     """ARQ background task to normalize and ingest ERP records."""
-    logger.info("erp_ingestion_task_started", connection_id=connection_id, count=len(records))
+    logger.info(
+        "erp_ingestion_task_started",
+        source=source,
+        connection_id=connection_id,
+        count=len(records),
+    )
     
     conn_uuid = uuid.UUID(connection_id)
     log_uuid = uuid.UUID(sync_log_id)
@@ -195,7 +201,12 @@ async def ingest_erp_batch_task(
         conn.total_records_ingested += ingested
 
         await session.commit()
-        logger.info("erp_ingestion_task_completed", ingested=ingested, failed=failed)
+        logger.info(
+            "erp_ingestion_task_completed",
+            source=source,
+            ingested=ingested,
+            failed=failed,
+        )
 
 class WorkerSettings:
     """Settings used by the arq CLI to run the worker."""

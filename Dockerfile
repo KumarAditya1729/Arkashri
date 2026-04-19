@@ -48,5 +48,6 @@ USER arkashri
 # Expose API port
 EXPOSE 8080
 
-# Default command can be overridden by Kubernetes for the Worker pod
-CMD ["gunicorn", "arkashri.main:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8080"]
+# Default command can be overridden by Kubernetes for the Worker pod.
+# Use Railway's injected PORT and keep the worker count conservative for faster startup.
+CMD ["sh", "-c", "exec gunicorn arkashri.main:app --workers ${GUNICORN_WORKERS:-1} --worker-class uvicorn.workers.UvicornWorker --timeout 120 --keep-alive 2 --bind 0.0.0.0:${PORT:-8080} --log-level info"]

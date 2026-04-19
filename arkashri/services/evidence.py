@@ -1,72 +1,146 @@
 # pyre-ignore-all-errors
-import uuid
-import os
-import shutil
-from typing import Protocol
-from starlette.datastructures import UploadFile
+from __future__ import annotations
 
-from arkashri.config import get_settings
+import json
+import logging
+from typing import Any, Dict, Optional
+from datetime import datetime, timezone
 
-class StorageBackend(Protocol):
-    async def save_file(self, tenant_id: str, file: UploadFile) -> str:
-        ...
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-    async def get_file_content(self, file_path: str) -> bytes:
-        ...
+from arkashri.models import SystemAuditLog
+from arkashri.services.seal import compute_seal_hash, compute_seal_signature
 
+logger = logging.getLogger("services.evidence")
 
-class LocalStorageBackend:
-    def __init__(self, base_dir: str = "/tmp/arkashri_evidence"):
-        self.base_dir = base_dir
-        os.makedirs(self.base_dir, exist_ok=True)
-
-    async def save_file(self, tenant_id: str, file: UploadFile) -> str:
-        tenant_dir = os.path.join(self.base_dir, tenant_id)
-        os.makedirs(tenant_dir, exist_ok=True)
+class InternalEvidenceService:
+    """
+    Handles the cryptographic signing of audit logs to create a verifiable evidence layer.
+    """
+    
+    @staticmethod
+    def _canonical_log_representation(log_entry: Dict[str, Any]) -> dict:
+        """
+        Create a deterministic dictionary for hashing.
+        Excludes the fields that will be updated (hash, signature).
+        """
+        # Fields that determine the integrity of the log
+        core_fields = [
+            "tenant_id", "user_id", "action", "resource_type", 
+            "resource_id", "status", "extra_metadata", "request_id",
+            "ip_address", "created_at"
+        ]
         
-        file_ext = os.path.splitext(file.filename)[1] if file.filename else ""
-        file_name = f"{uuid.uuid4()}{file_ext}"
-        file_path = os.path.join(tenant_dir, file_name)
-        
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        canonical = {}
+        for field in core_fields:
+            val = log_entry.get(field)
+            if isinstance(val, (datetime)):
+                val = val.replace(tzinfo=timezone.utc).isoformat()
+            canonical[field] = val
             
-        return file_path
+        return canonical
 
-    async def get_file_content(self, file_path: str) -> bytes:
-        with open(file_path, "rb") as buffer:
-            return buffer.read()
+    @classmethod
+    async def sign_audit_log(
+        cls, 
+        session: AsyncSession, 
+        log_id: Any
+    ) -> None:
+        """
+        Retrieves a log entry, computes its hash and signature, and updates it.
+        This provides the 'Audit Proof' required for SOC 2.
+        """
+        log = await session.get(SystemAuditLog, log_id)
+        if not log:
+            return
 
+        # 1. Build canonical payload
+        payload = cls._canonical_log_representation({
+            "tenant_id": log.tenant_id,
+            "user_id": str(log.user_id) if log.user_id else None,
+            "action": log.action,
+            "resource_type": log.resource_type,
+            "resource_id": log.resource_id,
+            "status": log.status,
+            "extra_metadata": log.extra_metadata,
+            "request_id": log.request_id,
+            "ip_address": log.ip_address,
+            "created_at": log.created_at
+        })
 
-class S3StorageBackend:
-    def __init__(self, bucket_name: str):
-        self.bucket_name = bucket_name
-        # Intentionally left unimplemented - requires boto3 setup.
-        # This is a structural mock for enterprise readiness demonstrating the interface.
+        # 2. Compute Evidence
+        log.content_hash = compute_seal_hash(payload)
+        log.signature    = compute_seal_signature(payload)
+        
+        session.add(log)
+        await session.commit()
+        
+        logger.info(f"Evidence sealed for log {log_id}. signature_v1={log.signature[:8]}...")
 
-    async def save_file(self, tenant_id: str, file: UploadFile) -> str:
-        file_ext = os.path.splitext(file.filename)[1] if file.filename else ""
-        file_key = f"{tenant_id}/{uuid.uuid4()}{file_ext}"
-        # Example logic: s3_client.upload_fileobj(file.file, self.bucket_name, file_key)
-        return f"s3://{self.bucket_name}/{file_key}"
+    @classmethod
+    async def emit_signed_audit_event(
+        cls,
+        session: AsyncSession,
+        request: Optional[Request],
+        action: str,
+        resource_type: str,
+        resource_id: Optional[str] = None,
+        tenant_id: str = "default",
+        user_id: Optional[uuid.UUID] = None,
+        user_email: Optional[str] = None,
+        status: str = "SUCCESS",
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> uuid.UUID:
+        """
+        Creates, hashes, signs, and persists a SystemAuditLog entry.
+        This provides a tamper-evident record of administrative and sensitive actions.
+        """
+        correlation_id = getattr(request.state, "correlation_id", None) if request else None
+        ip_address = request.client.host if request and request.client else None
+        user_agent = request.headers.get("User-Agent") if request else None
 
-    async def get_file_content(self, file_path: str) -> bytes:
-        # Example logic: response = s3_client.get_object(Bucket=self.bucket_name, Key=file_path)
-        # return response['Body'].read()
-        return b""
+        # 1. Create the base log entry
+        log = SystemAuditLog(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            user_email=user_email,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            status=status,
+            extra_metadata=metadata,
+            request_id=correlation_id,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        
+        # Flush to get the created_at timestamp generated by DB (if server_default used)
+        # or set it explicitly to be sure
+        log.created_at = datetime.now(timezone.utc)
+        
+        session.add(log)
+        await session.flush() # Populate ID
 
+        # 2. Build canonical payload for signing
+        payload = cls._canonical_log_representation({
+            "tenant_id": log.tenant_id,
+            "user_id": str(log.user_id) if log.user_id else None,
+            "action": log.action,
+            "resource_type": log.resource_type,
+            "resource_id": log.resource_id,
+            "status": log.status,
+            "extra_metadata": log.extra_metadata,
+            "request_id": log.request_id,
+            "ip_address": log.ip_address,
+            "created_at": log.created_at
+        })
 
-class EvidenceService:
-    def __init__(self):
-        get_settings()
-        # In a real enterprise app, we'd check if AWS S3 is configured, else fallback
-        # e.g., if settings.s3_bucket: self.backend = S3StorageBackend(settings.s3_bucket)
-        self.backend = LocalStorageBackend()
+        # 3. Compute Cryptographic Evidence
+        log.content_hash = compute_seal_hash(payload)
+        log.signature    = compute_seal_signature(payload)
+        
+        logger.info(f"Signed Audit Emitted: {action} on {resource_type} ({status}). Trace: {correlation_id}")
+        return log.id
 
-    async def upload_evidence(self, tenant_id: str, file: UploadFile) -> str:
-        return await self.backend.save_file(tenant_id, file)
-
-    async def get_evidence_content(self, file_path: str) -> bytes:
-        return await self.backend.get_file_content(file_path)
-
-evidence_service = EvidenceService()
+evidence_service = InternalEvidenceService()

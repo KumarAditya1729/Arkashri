@@ -15,6 +15,7 @@ from arkashri.models import (
     ModelStatus,
     ReportJob,
     Transaction,
+    TransactionEvidenceMap,
 )
 
 
@@ -26,6 +27,7 @@ class ScorecardMetrics:
     active_agents: int
     has_ml_model: bool
     has_automated_reports: bool
+    evidence_coverage_rate: float
     concurrent_audit_target: str
     setup_time_target_days: int
 
@@ -78,6 +80,15 @@ async def compute_scorecard(session: AsyncSession, tenant_id: str, jurisdiction:
     automation_rate = float(f"{(total_decisions - open_exceptions) / total_decisions:.6f}") if total_decisions else 0.0
     coverage_rate = float(f"{total_decisions / total_txn:.6f}") if total_txn else 0.0
 
+    total_linked_txn = int(
+        await session.scalar(
+            select(func.count(func.distinct(TransactionEvidenceMap.transaction_id)))
+            .where(TransactionEvidenceMap.tenant_id == tenant_id)
+        )
+        or 0
+    )
+    evidence_coverage_rate = float(f"{total_linked_txn / total_txn:.6f}") if total_txn else 0.0
+
     active_agents = int(await session.scalar(select(func.count(AgentProfile.id)).where(AgentProfile.is_active.is_(True))) or 0)
     has_ml_model = await session.scalar(select(ModelRegistry.id).where(ModelRegistry.status == ModelStatus.ACTIVE).limit(1)) is not None
     has_reports = (
@@ -93,6 +104,7 @@ async def compute_scorecard(session: AsyncSession, tenant_id: str, jurisdiction:
         active_agents=active_agents,
         has_ml_model=has_ml_model,
         has_automated_reports=has_reports,
+        evidence_coverage_rate=evidence_coverage_rate,
         concurrent_audit_target="50+",
         setup_time_target_days=1,
     )

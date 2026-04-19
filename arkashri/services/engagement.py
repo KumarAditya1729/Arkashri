@@ -15,11 +15,16 @@ logger = logging.getLogger(__name__)
 async def create_engagement(session: AsyncSession, payload: EngagementCreate) -> Engagement:
     """Create a new engagement and perform automated independence checking."""
     settings = get_settings()
-    independence_cleared = True
-    kyc_cleared = True
-    conflict_notes = "Automated check passed. No known conflicts."
+    independence_cleared = payload.independence_cleared
+    kyc_cleared = payload.kyc_cleared
+    conflict_notes = payload.conflict_check_notes
 
-    if settings.independence_webhook_url:
+    if independence_cleared is None or kyc_cleared is None:
+        if not settings.independence_webhook_url:
+            raise ValueError(
+                "Engagement creation requires either webhook-based independence verification "
+                "or explicit independence_cleared/kyc_cleared inputs."
+            )
         try:
             async with httpx.AsyncClient() as client:
                 res = await client.post(
@@ -34,16 +39,14 @@ async def create_engagement(session: AsyncSession, payload: EngagementCreate) ->
                 res.raise_for_status()
                 data = res.json()
                 independence_cleared = data.get("cleared", False)
+                kyc_cleared = data.get("kyc_cleared", True)
                 conflict_notes = data.get("notes", "Webhook check completed.")
         except Exception as exc:
-            logger.warning(f"Independence webhook failed: {exc}. Falling back to default mock checks.")
-            if payload.client_name.lower() in ["conflict corp", "restricted entity"]:
-                independence_cleared = False
-                conflict_notes = "Automatically flagged: Entity on restricted list."
-    else:
-        if payload.client_name.lower() in ["conflict corp", "restricted entity"]:
-            independence_cleared = False
-            conflict_notes = "Automatically flagged: Entity on restricted list."
+            logger.warning("independence_webhook_failed", error=str(exc), tenant_id=payload.tenant_id)
+            raise ValueError("Independence verification failed and no manual verification result was supplied.") from exc
+
+    if conflict_notes is None:
+        conflict_notes = "Externally verified independence/kyc result recorded."
 
     from arkashri.services.jurisdiction_standards import get_standards_for_jurisdiction
     standards_info = get_standards_for_jurisdiction(payload.jurisdiction)
@@ -56,6 +59,8 @@ async def create_engagement(session: AsyncSession, payload: EngagementCreate) ->
         standards_framework=standards_info["framework"],
         client_name=payload.client_name,
         engagement_type=payload.engagement_type,
+        period_start=payload.period_start,
+        period_end=payload.period_end,
         status=status,
         independence_cleared=independence_cleared,
         kyc_cleared=kyc_cleared,

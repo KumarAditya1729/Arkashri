@@ -1,23 +1,8 @@
-/**
- * Arkashri API Client — Phase 1 complete
- *
- * All calls include:
- *   - X-Arkashri-Tenant  (required for Postgres RLS)
- *   - X-Arkashri-Key     (when token is present in localStorage)
- *
- * Token lifecycle:
- *   - Obtained from POST /api/v1/token (sign-in)
- *   - Stored in localStorage as 'arkashri_token'
- *   - Cleared on sign-out
- */
+import { AUTH_SESSION_INVALID_EVENT } from '@/lib/auth/constants'
 
 const BASE_URL = '/api/proxy'
 const TENANT = process.env.NEXT_PUBLIC_API_TENANT ?? 'default_tenant'
 
-// Secure token management is handled server-side in /app/api/auth/login/route.ts
-
-// Token is now managed securely via HttpOnly cookies in the Next.js proxy.
-// No client-side token access required.
 function buildHeaders(extra: Record<string, string> = {}): Record<string, string> {
     return {
         'Content-Type': 'application/json',
@@ -34,9 +19,14 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     const res = await fetch(`${BASE_URL}${path}`, {
         ...init,
         headers: { ...h, ...(init?.headers as Record<string, string> | undefined ?? {}) },
+        credentials: 'same-origin',
+        cache: 'no-store',
     })
     if (!res.ok) {
         const text = await res.text().catch(() => res.statusText)
+        if (res.status === 401 && typeof window !== 'undefined') {
+            window.dispatchEvent(new Event(AUTH_SESSION_INVALID_EVENT))
+        }
         throw new ApiError(res.status, text)
     }
     if (res.status === 204) return undefined as T
@@ -48,6 +38,32 @@ export class ApiError extends Error {
         super(message)
         this.name = 'ApiError'
     }
+}
+
+// Backwards-compatible auth helpers for older frontend packages in this repo.
+export async function signIn(email: string, password: string): Promise<unknown> {
+    const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+        credentials: 'same-origin',
+        cache: 'no-store',
+    })
+
+    if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText)
+        throw new ApiError(res.status, text)
+    }
+
+    return res.json()
+}
+
+export async function clearAuth(): Promise<void> {
+    await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+    })
 }
 
 export interface EvidenceLedgerEntry {
@@ -69,21 +85,6 @@ export interface EvidenceLedgerEntry {
         provider_payload: any
         created_at: string
     }[]
-}
-
-// ─── Auth Types ───────────────────────────────────────────────────────────────
-
-export interface TokenResponse {
-    access_token: string
-    token_type: string
-    expires_in: number
-    user: {
-        email: string
-        full_name: string
-        role: string
-        tenant_id: string
-        initials: string
-    }
 }
 
 // ─── Engagement Types ─────────────────────────────────────────────────────────
@@ -353,24 +354,6 @@ export interface AuditRunOut {
 }
 
 // ─── API Functions ────────────────────────────────────────────────────────────
-
-// Auth - Now uses Next.js Route Handlers for HttpOnly cookies
-export async function signIn(email: string, password: string): Promise<TokenResponse> {
-    const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-    })
-    if (!res.ok) {
-        const text = await res.text()
-        throw new ApiError(res.status, text)
-    }
-    return res.json()
-}
-
-export async function clearAuth(): Promise<void> {
-    await fetch('/api/auth/logout', { method: 'POST' })
-}
 
 // Engagements
 export async function getEngagement(uuid: string): Promise<EngagementResponse | null> {

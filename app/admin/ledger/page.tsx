@@ -9,10 +9,12 @@ import { Shield, Database, ExternalLink, Link as LinkIcon, RefreshCcw } from 'lu
 import { Button } from '@/components/ui/button'
 
 export default function AdminLedgerPage() {
-    const { user, isAuthenticated } = useAuthStore()
+    const user = useAuthStore((s) => s.user)
+    const status = useAuthStore((s) => s.status)
     const [ledger, setLedger] = useState<EvidenceLedgerEntry[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const isAdmin = status === 'authenticated' && user?.role === 'admin'
 
     const fetchLedger = async () => {
         setLoading(true)
@@ -28,12 +30,16 @@ export default function AdminLedgerPage() {
     }
 
     useEffect(() => {
-        if (isAuthenticated && (user?.role?.toUpperCase() === 'ADMIN')) {
+        if (isAdmin) {
             fetchLedger()
         }
-    }, [isAuthenticated, user])
+    }, [isAdmin])
 
-    if (!isAuthenticated || user?.role?.toUpperCase() !== 'ADMIN') {
+    if (status === 'loading') {
+        return <div className="min-h-[60vh]" />
+    }
+
+    if (!isAdmin) {
         return (
             <div className="flex items-center justify-center min-h-[60vh]">
                 <Card className="w-full max-w-md">

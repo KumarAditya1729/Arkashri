@@ -46,6 +46,7 @@ from arkashri.routers.reporting import router as reporting_router
 from arkashri.services.health import get_full_health_status
 
 # Import production middleware
+from arkashri.middleware.correlation import CorrelationMiddleware
 from arkashri.middleware.performance import (
     AdvancedCacheMiddleware,
     CompressionMiddleware
@@ -53,6 +54,13 @@ from arkashri.middleware.performance import (
 from arkashri.middleware.oauth2 import create_oauth2_middleware
 from arkashri.middleware.mfa import create_mfa_middleware
 from arkashri.middleware.enhanced_security import create_enhanced_security_middleware
+from arkashri.middleware.security import (
+    SecurityHeadersMiddleware,
+    RequestSizeMiddleware,
+    RequestValidationMiddleware,
+    ThreatDetectionMiddleware
+)
+from arkashri.middleware.rate_limiting import ProductionRateLimitMiddleware
 # Import production services
 from arkashri.logging_config import setup_logging, performance_logger
 from arkashri.db import db_manager
@@ -63,6 +71,7 @@ import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 settings = get_settings()
+settings.validate_runtime_configuration()
 
 # Setup production logging
 setup_logging()
@@ -170,10 +179,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from arkashri.middleware.idempotency import IdempotencyMiddleware
+
 # ── Production Middleware Stack ─────────────────────────────────────────────────
+# Correlation ID (Primary entry point for trace propagation)
+app.add_middleware(CorrelationMiddleware)
+
+# Idempotency & Replay Protection (SOC 2 Requirement)
+if settings.redis_url:
+    app.add_middleware(
+        IdempotencyMiddleware,
+        redis_client_getter=lambda: redis_async.from_url(settings.redis_url)
+    )
+
 # Enhanced security middleware
-# Security middleware (WebSocket-friendly configuration)
-# app.add_middleware(SecurityHeadersMiddleware)  # Temporarily disabled due to import issue
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Enhanced security features
 oauth2_middleware = create_oauth2_middleware(app)
@@ -187,13 +207,14 @@ if mfa_middleware:
 enhanced_security_middleware = create_enhanced_security_middleware(app)
 if enhanced_security_middleware:
     app.add_middleware(type(enhanced_security_middleware))
-# app.add_middleware(RequestSizeMiddleware)  # Disabled for WebSocket compatibility
-# app.add_middleware(RequestValidationMiddleware)  # Disabled for WebSocket compatibility
-# app.add_middleware(ThreatDetectionMiddleware)  # Disabled for WebSocket compatibility
 
-# Rate limiting and throttling - Disabled for WebSocket compatibility
-# if settings.redis_url:
-#     app.add_middleware(ProductionRateLimitMiddleware, redis_url=settings.redis_url)
+app.add_middleware(RequestSizeMiddleware)
+app.add_middleware(RequestValidationMiddleware)
+app.add_middleware(ThreatDetectionMiddleware)
+
+# Rate limiting and throttling
+if settings.redis_url:
+    app.add_middleware(ProductionRateLimitMiddleware, redis_url=settings.redis_url)
 
 # Performance optimization - WebSocket-friendly
 if settings.redis_url:
@@ -387,6 +408,9 @@ async def detailed_metrics():
 
 
 
+from arkashri.routers.blockchain import router as blockchain_router
+from arkashri.routers.multi_chain import router as multi_chain_router
+
 app.include_router(api_v1_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(status_router, prefix="/api/v1")
@@ -394,6 +418,8 @@ app.include_router(reporting_router, prefix="/api/v1")
 app.include_router(standards_router, prefix="/api")
 app.include_router(judgments_router, prefix="/api")
 app.include_router(client_portal_router, prefix="/api")
+app.include_router(blockchain_router, prefix="/api/v1/blockchain")
+app.include_router(multi_chain_router, prefix="/api/blockchain")
 app.include_router(websockets_router)
 
 # Add WebSocket endpoint directly for testing
@@ -462,4 +488,4 @@ async def direct_websocket(websocket: WebSocket):
 
 # app.add_middleware(StructlogMiddleware)
 # Fixed AsyncSession import issue
-\n# Cache buster
+# Cache buster

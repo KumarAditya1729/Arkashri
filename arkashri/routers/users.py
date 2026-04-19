@@ -13,13 +13,14 @@ Endpoints:
 """
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from arkashri.db import get_session
 from arkashri.models import User, UserRole, ClientRole
+from arkashri.services.auth_sessions import create_login_session
 from arkashri.services.password import hash_password, verify_password
 from arkashri.dependencies import require_api_client, AuthContext
 
@@ -47,10 +48,10 @@ class RegisterRequest(BaseModel):
 )
 async def register_user(
     payload: RegisterRequest,
+    request: Request,
     db: AsyncSession = Depends(get_session),
 ):
     from fastapi.responses import JSONResponse
-    from arkashri.services.jwt_service import create_access_token, create_refresh_token
 
     email = payload.email.strip().lower()
     tenant_id = "default_tenant"   # all self-registered users land in default tenant
@@ -87,21 +88,17 @@ async def register_user(
         created_by="self-registration",
     )
     db.add(user)
+    await db.flush()
+    bundle = await create_login_session(db, user=user, request=request)
     await db.commit()
-    await db.refresh(user)
-
-    access_token = create_access_token(
-        sub=str(user.id), email=user.email, role=user.role.value,
-        tenant_id=user.tenant_id, full_name=user.full_name, initials=user.initials, user_id=str(user.id),
-    )
-    refresh_token = create_refresh_token(sub=str(user.id), user_id=str(user.id), tenant_id=user.tenant_id)
 
     return JSONResponse(
         status_code=201,
         content={
-            "access_token": access_token,
-            "refresh_token": refresh_token,
+            "access_token": bundle.access_token,
+            "refresh_token": bundle.refresh_token,
             "token_type": "bearer",
+            "expires_in": bundle.expires_in,
             "user": {
                 "id": str(user.id), "email": user.email, "full_name": user.full_name,
                 "role": user.role.value, "tenant_id": user.tenant_id, "initials": user.initials,

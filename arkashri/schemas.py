@@ -179,6 +179,7 @@ class DecisionOut(BaseModel):
     model_versions: list[dict[str, Any]]
     rule_snapshot: list[dict[str, Any]]
     explanation: dict[str, Any]
+    trace_log: list[str] | None
     output_hash: str
     created_at: datetime
 
@@ -310,6 +311,7 @@ class ScorecardOut(BaseModel):
     automation_rate: float
     audit_cycle_days: float | None
     coverage_rate: float
+    evidence_coverage_rate: float
     active_ai_agents: int
     blockchain_verification: bool
     realtime_collaboration: bool
@@ -522,6 +524,10 @@ class BlockchainAdapterOut(BaseModel):
 
 class BlockchainAnchorRequest(BaseModel):
     adapter_key: str = Field(default="POLKADOT", min_length=1, max_length=100)
+    merkle_root: str = Field(min_length=64, max_length=130)
+    window_start_event_id: int = Field(ge=0)
+    window_end_event_id: int = Field(ge=0)
+    chain_anchor_id: int = Field(ge=0)
     external_reference: str | None = Field(default=None, max_length=255)
 
 
@@ -651,6 +657,11 @@ class EngagementCreate(BaseModel):
     jurisdiction: str = Field(min_length=2, max_length=20)
     client_name: str = Field(min_length=1, max_length=255)
     engagement_type: EngagementType = EngagementType.STATUTORY_AUDIT
+    period_start: datetime | None = None
+    period_end: datetime | None = None
+    independence_cleared: bool | None = None
+    kyc_cleared: bool | None = None
+    conflict_check_notes: str | None = None
 
 
 class EngagementOut(BaseModel):
@@ -662,6 +673,8 @@ class EngagementOut(BaseModel):
     standards_framework: StandardsFramework
     client_name: str
     engagement_type: EngagementType
+    period_start: datetime | None
+    period_end: datetime | None
     status: EngagementStatus
     independence_cleared: bool
     kyc_cleared: bool

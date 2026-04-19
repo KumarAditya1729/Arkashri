@@ -139,16 +139,18 @@ async def query_knowledge(
         }
     )
 
-    stmt = (
-        select(KnowledgeChunk, KnowledgeDocument)
-        .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
-        .where(
-            KnowledgeDocument.is_active.is_(True),
-            KnowledgeDocument.jurisdiction.in_([jurisdiction, "GLOBAL"]),
-        )
-    )
+    # Optimization: Filter by keywords in SQL to reduce OOM risk
+    # Only load top 500 potential matches into memory for ranking
+    query_terms = [t for t in query_token_set if len(t) > 3]
+    if query_terms:
+        # Simple ilike check for at least one significant term to reduce candidate pool
+        from sqlalchemy import or_
+        filters = [KnowledgeChunk.chunk_text.ilike(f"%{term}%") for term in query_terms[:3]]
+        stmt = stmt.where(or_(*filters))
+
+    stmt = stmt.limit(1000) # Safety cap
     result = await session.execute(stmt)
-    candidates = list(result)
+    candidates = result.all()
 
     scored_matches: list[RagSourceMatch] = []
     for chunk, document in candidates:

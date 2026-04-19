@@ -1,7 +1,10 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
-import { useAuthStore } from '../../store/authStore'
+import { DEFAULT_JURISDICTION } from '@/lib/auth/constants'
+import { getWebSocketTicket } from '@/lib/auth/client'
+import { getWebSocketBaseUrl } from '@/lib/auth/shared'
+import { useAuthStore } from '@/store/authStore'
 
 interface WebSocketContextType {
     isConnected: boolean
@@ -22,7 +25,8 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     const mountedRef = useRef(true)
 
     const user = useAuthStore((s) => s.user)
-    const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+    const status = useAuthStore((s) => s.status)
+    const isAuthenticated = status === 'authenticated'
 
     const getBackoffMs = (attempt: number) =>
         Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt), BACKOFF_MAX_MS)
@@ -38,20 +42,21 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }, delay)
     }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-    const connectWs = useCallback((auth: boolean) => {
+    const connectWs = useCallback(async (auth: boolean) => {
         if (!auth || !mountedRef.current) return
         if (socketRef.current?.readyState === WebSocket.OPEN) return
 
         const currentUser = useAuthStore.getState().user
         if (!currentUser) return
 
-        const tenantId = currentUser.organisation === 'Arkashri Systems' ? 'default_tenant' : currentUser.id
-        const jurisdiction = 'IN'
-        const wsUrl = `${process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8001'}/ws/audit/${tenantId}/${jurisdiction}`
-
-        console.log(`Connecting to WebSocket: ${wsUrl}`)
+        const jurisdiction = DEFAULT_JURISDICTION
 
         try {
+            const ticket = await getWebSocketTicket(jurisdiction)
+            const wsUrl = `${getWebSocketBaseUrl()}/ws/audit/${encodeURIComponent(currentUser.tenantId)}/${encodeURIComponent(jurisdiction)}?ticket=${encodeURIComponent(ticket.ticket)}`
+
+            console.log(`Connecting to WebSocket: ${wsUrl}`)
+
             const socket = new WebSocket(wsUrl)
             socketRef.current = socket
 
@@ -93,11 +98,19 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         mountedRef.current = true
         if (isAuthenticated && user) {
             const t = setTimeout(() => connectWs(true), 1000)
-            return () => clearTimeout(t)
-        } else {
+            return () => {
+                mountedRef.current = false
+                clearTimeout(t)
+                socketRef.current?.close()
+                if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
+            }
+        }
+
+        if (!isAuthenticated || !user) {
             socketRef.current?.close()
             if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
         }
+
         return () => {
             mountedRef.current = false
             socketRef.current?.close()

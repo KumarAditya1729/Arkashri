@@ -28,8 +28,6 @@ ALGORITHM              = "HS256"
 _ALLOWED_ALGORITHMS    = ["HS256"]          # Whitelist — alg=none is NOT in here
 ARKASHRI_ISSUER        = "arkashri"
 ARKASHRI_AUDIENCE      = "arkashri-api"
-ACCESS_TOKEN_EXPIRE_HOURS  = 24
-REFRESH_TOKEN_EXPIRE_DAYS  = 7
 
 # Strict decode options passed to python-jose on every call
 _DECODE_OPTIONS: dict = {
@@ -47,6 +45,22 @@ def _secret() -> str:
     return get_settings().session_secret_key
 
 
+def get_access_token_expires_in_seconds() -> int:
+    return get_settings().jwt_expiry_minutes * 60
+
+
+def _access_token_expiry_delta() -> datetime.timedelta:
+    return datetime.timedelta(seconds=get_access_token_expires_in_seconds())
+
+
+def _refresh_token_expiry_delta() -> datetime.timedelta:
+    return datetime.timedelta(days=get_settings().refresh_token_expiry_days)
+
+
+def _ws_ticket_expiry_delta() -> datetime.timedelta:
+    return datetime.timedelta(seconds=get_settings().ws_ticket_expiry_seconds)
+
+
 # ── Token creation ─────────────────────────────────────────────────────────────
 
 def create_access_token(
@@ -58,6 +72,7 @@ def create_access_token(
     full_name: str,
     initials: str,
     user_id: str,
+    session_id: str,
 ) -> str:
     """Issue a hardened HS256 access token with iss, aud, exp, iat, jti."""
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -71,15 +86,15 @@ def create_access_token(
         "full_name": full_name,
         "initials":  initials,
         "user_id":   user_id,
+        "sid":       session_id,
         "iat":       now,
-        "exp":       now + datetime.timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS),
+        "exp":       now + _access_token_expiry_delta(),
         "jti":       str(uuid.uuid4()),
         "type":      "access",
     }
     return jwt.encode(payload, _secret(), algorithm=ALGORITHM)
 
-
-def create_refresh_token(*, sub: str, user_id: str, tenant_id: str) -> str:
+def create_refresh_token(*, sub: str, user_id: str, tenant_id: str, session_id: str) -> str:
     """Issue a hardened HS256 refresh token — fewer claims, longer TTL."""
     now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
@@ -88,10 +103,29 @@ def create_refresh_token(*, sub: str, user_id: str, tenant_id: str) -> str:
         "aud":       ARKASHRI_AUDIENCE,
         "user_id":   user_id,
         "tenant_id": tenant_id,
+        "sid":       session_id,
         "iat":       now,
-        "exp":       now + datetime.timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        "exp":       now + _refresh_token_expiry_delta(),
         "jti":       str(uuid.uuid4()),
         "type":      "refresh",
+    }
+    return jwt.encode(payload, _secret(), algorithm=ALGORITHM)
+
+
+def create_ws_ticket(*, user_id: str, tenant_id: str, jurisdiction: str) -> str:
+    """Issue a short-lived, websocket-specific token for one tenant/jurisdiction pair."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    payload = {
+        "sub":          user_id,
+        "iss":          ARKASHRI_ISSUER,
+        "aud":          ARKASHRI_AUDIENCE,
+        "user_id":      user_id,
+        "tenant_id":    tenant_id,
+        "jurisdiction": jurisdiction,
+        "iat":          now,
+        "exp":          now + _ws_ticket_expiry_delta(),
+        "jti":          str(uuid.uuid4()),
+        "type":         "ws",
     }
     return jwt.encode(payload, _secret(), algorithm=ALGORITHM)
 
@@ -169,6 +203,40 @@ def decode_refresh_token(token: str) -> dict:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token type. Expected 'refresh'.",
+        )
+
+    return payload
+
+
+def decode_ws_ticket(token: str) -> dict:
+    """
+    Decode a websocket ticket. Same hardening as access/refresh tokens,
+    but expects type='ws' and a short expiry window.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            _secret(),
+            algorithms=_ALLOWED_ALGORITHMS,
+            issuer=ARKASHRI_ISSUER,
+            audience=ARKASHRI_AUDIENCE,
+            options=_DECODE_OPTIONS,
+        )
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="WebSocket ticket has expired. Request a new ticket.",
+        )
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"WebSocket ticket validation failed: {e}",
+        )
+
+    if payload.get("type") != "ws":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type. Expected 'ws'.",
         )
 
     return payload

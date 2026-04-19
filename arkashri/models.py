@@ -100,13 +100,53 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    sessions: Mapped[list["PlatformSession"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class PlatformSession(Base):
+    """
+    Refresh-session ledger for browser/device logins.
+    Access and refresh JWTs are both bound to this row via the `sid` claim.
+    """
+    __tablename__ = "platform_session"
+    __table_args__ = (
+        UniqueConstraint("refresh_token_hash", name="uq_platform_session_refresh_hash"),
+        Index("ix_platform_session_user_active", "user_id", "revoked_at"),
+        Index("ix_platform_session_family", "family_id"),
+        Index("ix_platform_session_tenant_user", "tenant_id", "user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    family_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("platform_user.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    refresh_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    client_ip: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revocation_reason: Mapped[str | None] = mapped_column(String(120))
+    replaced_by_session_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship(back_populates="sessions")
 
 
 class EngagementStatus(str, enum.Enum):
-    PENDING  = "PENDING"
-    ACCEPTED = "ACCEPTED"
-    REJECTED = "REJECTED"
-    SEALED   = "SEALED"   # Engagement locked after multi-partner co-sign
+    PENDING   = "PENDING"
+    ACCEPTED  = "ACCEPTED"
+    REJECTED  = "REJECTED"
+    COLLECTED = "COLLECTED"   # Data ingested (ERP/Bank)
+    VERIFIED  = "VERIFIED"    # Evidence linked & verified
+    FLAGGED   = "FLAGGED"     # High risks identified
+    REVIEWED  = "REVIEWED"    # Professional judgment applied
+    SEALED    = "SEALED"      # Engagement locked (CLOSED)
 
 
 class EngagementType(str, enum.Enum):
@@ -438,6 +478,7 @@ class Decision(Base):
     model_versions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     rule_snapshot: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     explanation: Mapped[dict] = mapped_column(JSON, nullable=False)
+    trace_log: Mapped[list | None] = mapped_column(JSON) # Detailed human-readable justification log
     output_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -957,6 +998,8 @@ class Engagement(Base):
     engagement_type: Mapped[EngagementType] = mapped_column(
         Enum(EngagementType, name="engagement_type", values_callable=lambda x: [e.value for e in x]), nullable=False, default=EngagementType.STATUTORY_AUDIT
     )
+    period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[EngagementStatus] = mapped_column(
         Enum(EngagementStatus, name="engagement_status", values_callable=lambda x: [e.value for e in x]), nullable=False, default=EngagementStatus.PENDING
     )
@@ -965,6 +1008,8 @@ class Engagement(Base):
     conflict_check_notes: Mapped[str | None] = mapped_column(Text)
     sealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     seal_hash: Mapped[str | None] = mapped_column(String(64))
+    # ── State Machine Metadata (Audit Workflow Engine) ────────────────────────
+    state_metadata: Mapped[dict | None] = mapped_column(JSON)       # Stores lifecycle history and checklists
     # ── Seal persistence & key provenance (PCAOB hardening) ────────────────────
     seal_bundle: Mapped[dict | None] = mapped_column(JSON)           # Full WORM bundle payload — enables replay verification
     seal_key_version: Mapped[str | None] = mapped_column(String(32)) # HMAC key version used (supports key rotation audit)
@@ -979,6 +1024,44 @@ class Engagement(Base):
     team_members: Mapped[list[TeamMember]] = relationship(back_populates="engagement", cascade="all, delete-orphan")
     risks: Mapped[list[RiskEntry]] = relationship(back_populates="engagement", cascade="all, delete-orphan")
     controls: Mapped[list[ControlEntry]] = relationship(back_populates="engagement", cascade="all, delete-orphan")
+    evidence: Mapped[list[EvidenceRecord]] = relationship(back_populates="engagement", cascade="all, delete-orphan")
+
+
+class EvidenceRecord(Base):
+    __tablename__ = "evidence_records"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    engagement_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("engagement.id", ondelete="CASCADE"), nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    evd_ref: Mapped[str] = mapped_column(String(64), nullable=False)           # EVD-001 etc
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    file_size_kb: Mapped[str | None] = mapped_column(String(32))
+    evidence_type: Mapped[str] = mapped_column(String(64), nullable=False, default="Document")
+    test_ref: Mapped[str | None] = mapped_column(String(128))
+    uploaded_by: Mapped[str] = mapped_column(String(120), nullable=False, default="System")
+    ev_status: Mapped[str] = mapped_column(String(32), nullable=False, default="Pending Review")
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    engagement: Mapped[Engagement] = relationship(back_populates="evidence")
+    linked_transactions: Mapped[list[TransactionEvidenceMap]] = relationship(back_populates="evidence", cascade="all, delete-orphan")
+
+
+class TransactionEvidenceMap(Base):
+    """Many-to-many linkage between financial transactions and supporting evidence."""
+    __tablename__ = "transaction_evidence_map"
+    
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    transaction_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("financial_transaction.id", ondelete="CASCADE"), nullable=False, index=True)
+    evidence_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("evidence_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    tenant_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    linked_by: Mapped[str | None] = mapped_column(String(120))
+
+    # Relationships
+    transaction: Mapped[Transaction] = relationship()
+    evidence: Mapped[EvidenceRecord] = relationship(back_populates="linked_transactions")
 
 
 class EngagementPhase(Base):
@@ -1504,6 +1587,10 @@ class SystemAuditLog(Base):
     ip_address: Mapped[str | None] = mapped_column(String(45))
     user_agent: Mapped[str | None] = mapped_column(Text)
     
+    # ── Evidence Hardening: SOC 2 Type II Proofs ──────────────────────────────
+    content_hash: Mapped[str | None] = mapped_column(String(64))  # SHA-256 canonical hash
+    signature: Mapped[str | None] = mapped_column(String(128))    # HMAC signature using system master key
+    
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
@@ -1616,4 +1703,22 @@ class ClientPortalAccess(Base):
     last_accessed: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     
+    engagement: Mapped[Engagement] = relationship()
+
+
+class ClientPortalNotificationSubscription(Base):
+    __tablename__ = "client_portal_notification_subscription"
+    __table_args__ = (
+        UniqueConstraint("engagement_id", "email", name="uq_client_portal_notification_subscription"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("engagement.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     engagement: Mapped[Engagement] = relationship()

@@ -173,8 +173,31 @@ async def execute_run(session: AsyncSession, run: AuditRun, *, max_steps: int = 
 
         output_payload = await _build_step_output(session, run, step)
         step.output_payload = output_payload
+        
+        # 🔗 Blockchain Anchoring Hook
+        # Anchor the output hash to ensure immutable provenance of this audit step
+        output_hash = hash_object(output_payload)
+        from arkashri.services.multi_chain_blockchain import multi_chain_blockchain_service
+        try:
+            # We anchor the hash of the output to ensure its integrity
+            anchor_result = await multi_chain_blockchain_service.anchor_evidence_multi_chain(
+                evidence_hash=output_hash,
+                metadata={
+                    "run_id": str(run.id),
+                    "step_id": str(step.id),
+                    "phase": step.phase_id,
+                    "action": step.action,
+                    "tenant_id": run.tenant_id
+                }
+            )
+            blockchain_txs = anchor_result.get("networks_anchored", [])
+            logger.info("audit_step_anchored", step_id=str(step.id), networks=blockchain_txs)
+        except Exception as e:
+            logger.warning("audit_step_anchoring_failed", step_id=str(step.id), error=str(e))
+            blockchain_txs = []
+
         step.evidence_payload = {
-            "output_hash": hash_object(output_payload),
+            "output_hash": output_hash,
             "evidence_hash": hash_object(
                 {
                     "run_id": str(run.id),
@@ -183,6 +206,7 @@ async def execute_run(session: AsyncSession, run: AuditRun, *, max_steps: int = 
                 }
             ),
             "executed_at": now.isoformat(),
+            "blockchain_anchors": blockchain_txs
         }
         step.status = AuditStepStatus.COMPLETED
         step.completed_at = now
@@ -265,19 +289,33 @@ async def _build_step_output(session: AsyncSession, run: AuditRun, step: AuditRu
     # 1. Specialized Semantic Hook: Going Concern Engine (SA 570)
     if "going concern" in action_lower or "sa 570" in action_lower or "altman" in action_lower:
         from arkashri.services.going_concern import run_going_concern_assessment, GoingConcernFinancials, going_concern_result_to_dict
-        # Ideally, we would fetch fresh ERP data here and map to GoingConcernFinancials.
-        # For autonomous validation, we pass dummy financials unless provided in evidence.
         evidence_raw = step.input_payload.get("evidence_expected", {})
         evidence = evidence_raw if isinstance(evidence_raw, dict) else {}
+        required_financial_fields = (
+            "total_assets",
+            "total_liabilities",
+            "current_assets",
+            "current_liabilities",
+            "revenue",
+            "ebit",
+            "net_income",
+            "operating_cash_flow",
+        )
+        missing_fields = [field for field in required_financial_fields if evidence.get(field) is None]
+        if missing_fields:
+            raise ValueError(
+                "Going concern analysis requires externally supplied financial data. "
+                f"Missing fields: {', '.join(missing_fields)}"
+            )
         fin_data = GoingConcernFinancials(
-            total_assets=evidence.get("total_assets", 50000),
-            total_liabilities=evidence.get("total_liabilities", 18000),
-            current_assets=evidence.get("current_assets", 22000),
-            current_liabilities=evidence.get("current_liabilities", 8000),
-            revenue=evidence.get("revenue", 60000),
-            ebit=evidence.get("ebit", 8000),
-            net_income=evidence.get("net_income", 5500),
-            operating_cash_flow=evidence.get("operating_cash_flow", 7200),
+            total_assets=evidence["total_assets"],
+            total_liabilities=evidence["total_liabilities"],
+            current_assets=evidence["current_assets"],
+            current_liabilities=evidence["current_liabilities"],
+            revenue=evidence["revenue"],
+            ebit=evidence["ebit"],
+            net_income=evidence["net_income"],
+            operating_cash_flow=evidence["operating_cash_flow"],
         )
         
         # Execute actual mathematical pipeline
@@ -328,9 +366,8 @@ async def _build_step_output(session: AsyncSession, run: AuditRun, step: AuditRu
 
     # 3. Specialized Semantic Hook: Risk Engine
     if "risk" in action_lower and "compute" in action_lower:
-        from arkashri.services.risk_engine import compute_risk
-        # The user has to provide transactions or we rely on pre-saved. We just let risk_compute pull from DB.
-        risk_res = await compute_risk(session=session, engagement_id=run.id)
+        from arkashri.services.scoring import score_engagement_transactions
+        scoring_res = await score_engagement_transactions(session=session, engagement_id=run.id)
         return {
             "run_id": str(run.id),
             "step_ref": f"{step.phase_id}:{step.step_id}",
@@ -338,9 +375,9 @@ async def _build_step_output(session: AsyncSession, run: AuditRun, step: AuditRu
             "automation_mode": "deterministic_math",
             "result": "PASS",
             "completion_time": completion_time,
-            "notes": f"Risk successfully analyzed across engine modules. Risk Grade: {risk_res.overall_risk_band}",
-            "composite_score": risk_res.composite_score,
-            "critical_flags_count": len(risk_res.critical_flags)
+            "notes": f"Risk assessment completed for {scoring_res['transactions_scored']} transactions. High-risk hits: {scoring_res['high_risk_count']}.",
+            "transactions_scored": scoring_res["transactions_scored"],
+            "high_risk_count": scoring_res["high_risk_count"]
         }
 
     # 4. Fallback: Generic LLM Logic Evaluation
@@ -446,15 +483,15 @@ async def _step_requires_pending_approval(session: AsyncSession, run: AuditRun, 
     )
     session.add(action)
 
-    # Dispatch target emails to the partner / auditor roles over AWS SES via ARQ
-    # For now, resolving the mock recipient from the role
-    mock_recipient = f"{step.owner_role.lower().replace(' ', '_')}@arkashri-demo.io"
-    await redis.enqueue_job(
-        "send_email_task",
-        [mock_recipient],
-        f"Action Required: Arkashri Audit Approval [{run.audit_type}]",
-        f"Hello,\n\nYour review is required to unblock the audit '{run.audit_type}' at phase '{step.phase_id}'.\n\nLogin to the Arkashri dashboard to digitally sign this step.",
-        None # Optional HTML body
-    )
+    recipient_payload = step.input_payload.get("approval_recipients", []) if isinstance(step.input_payload, dict) else []
+    recipients = [str(item).strip() for item in recipient_payload if str(item).strip()]
+    if recipients:
+        await redis.enqueue_job(
+            "send_email_task",
+            recipients,
+            f"Action Required: Arkashri Audit Approval [{run.audit_type}]",
+            f"Hello,\n\nYour review is required to unblock the audit '{run.audit_type}' at phase '{step.phase_id}'.\n\nLogin to the Arkashri dashboard to digitally sign this step.",
+            None,
+        )
     await redis.close()
     return True

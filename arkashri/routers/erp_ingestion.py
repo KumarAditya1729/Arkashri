@@ -7,22 +7,17 @@ Endpoints:
   GET   /erp/connections                          List all ERP connections for tenant
   POST  /erp/connections/{id}/sync                Run ERP sync (bulk ingest)
   GET   /erp/connections/{id}/sync-logs           Last N sync logs for a connection
-
-  POST  /mock/erp/{system}/trial-balance          Mock ERP trial balance extract
-  POST  /mock/erp/{system}/journal-entries        Mock ERP journal entry batch
-  GET   /mock/erp/{system}/chart-of-accounts      Mock chart of accounts
-
-All mock endpoints return realistic-looking data for each ERP system
-so the integration can be demoed without a live ERP instance.
+  GET   /erp/connections/{id}/trial-balance       Fetch live trial balance from the configured ERP
+  GET   /erp/connections/{id}/chart-of-accounts   Fetch live chart of accounts from the configured ERP
 """
 from __future__ import annotations
 
 import time
 import datetime
-import random
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status, Path, Query, Request
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -35,13 +30,13 @@ from arkashri.models import (
 )
 from arkashri.dependencies import require_api_client, AuthContext, limiter
 from arkashri.services.erp_adapter import normalize_batch
+from arkashri.services.erp_connectors import ERPConnectorError, get_connector
 from arkashri.services.crypto import encrypt_dict
 
 router = APIRouter()
+logger = structlog.get_logger(__name__)
 
-ERPSystemLiteral = Literal[
-    "SAP_S4HANA", "ORACLE_FUSION", "TALLY_PRIME", "ZOHO_BOOKS", "QUICKBOOKS", "GENERIC_CSV"
-]
+IngestionSource = Literal["ERP_API", "CSV_UPLOAD"]
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -66,11 +61,15 @@ class ConnectionOut(BaseModel):
 
 
 class SyncRequest(BaseModel):
-    records: list[dict] = Field(..., min_length=1, max_length=5000,
-        description="Raw ERP records to sync (already extracted from ERP API)")
+    records: list[dict] | None = Field(
+        default=None,
+        max_length=5000,
+        description="Raw ERP records to sync. Omit to pull directly from the configured ERP connector.",
+    )
     date_range_from: str | None = Field(None, description="YYYY-MM-DD")
     date_range_to:   str | None = Field(None, description="YYYY-MM-DD")
     jurisdiction: str = Field(default="IN")
+    source: IngestionSource | None = Field(default=None, description="External ingestion source for logging and audit.")
 
 
 class SyncResult(BaseModel):
@@ -98,6 +97,13 @@ class SyncLogOut(BaseModel):
     date_range_to:   str | None
     started_at: str
     completed_at: str | None
+
+
+class ExternalERPOut(BaseModel):
+    erp_system: str
+    source: str
+    trial_balance: list[dict] | None = None
+    accounts: list[dict] | None = None
 
 
 # ─── 1. Register ERP Connection ───────────────────────────────────────────────
@@ -189,8 +195,34 @@ async def run_erp_sync(
     if not conn.is_active:
         raise HTTPException(409, "ERP connection is inactive.")
 
+    records = payload.records
+    source = payload.source
+    if records is None:
+        try:
+            fetched = await get_connector(conn.erp_system).fetch_journal_entries(
+                conn,
+                date_range_from=payload.date_range_from,
+                date_range_to=payload.date_range_to,
+            )
+        except ERPConnectorError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        records = fetched.records
+        source = fetched.source
+    elif len(records) == 0:
+        raise HTTPException(status_code=400, detail="At least one ERP record is required for sync.")
+    elif source is None:
+        source = "CSV_UPLOAD" if conn.erp_system == ERPSystem.GENERIC_CSV else "ERP_API"
+
     now = datetime.datetime.now(datetime.timezone.utc)
-    count = len(payload.records)
+    count = len(records)
+    logger.info(
+        "erp_sync_requested",
+        source=source,
+        erp_system=conn.erp_system.value,
+        connection_id=str(conn.id),
+        tenant_id=auth.tenant_id,
+        record_count=count,
+    )
 
     sync_log = ERPSyncLog(
         connection_id=connection_id,
@@ -213,8 +245,9 @@ async def run_erp_sync(
             connection_id=str(connection_id),
             tenant_id=auth.tenant_id,
             jurisdiction=payload.jurisdiction,
-            records=payload.records,
+            records=records,
             sync_log_id=str(sync_log.id),
+            source=source,
         )
         return SyncResult(
             sync_log_id=str(sync_log.id),
@@ -233,7 +266,7 @@ async def run_erp_sync(
     ingested = failed = flagged = 0
     flagged_refs: list[str] = []
 
-    normalized = normalize_batch(conn.erp_system.value, payload.records)
+    normalized = normalize_batch(conn.erp_system.value, records)
 
     for norm_payload, payload_hash in normalized:
         if "error" in norm_payload and "PARSE_ERROR" in norm_payload.get("risk_flags", []):
@@ -284,6 +317,16 @@ async def run_erp_sync(
     db.add(sync_log)
     db.add(conn)
     await db.commit()
+    logger.info(
+        "erp_sync_completed",
+        source=source,
+        erp_system=conn.erp_system.value,
+        connection_id=str(conn.id),
+        tenant_id=auth.tenant_id,
+        records_ingested=ingested,
+        records_failed=failed,
+        records_flagged=flagged,
+    )
 
     return SyncResult(
         sync_log_id=str(sync_log.id),
@@ -323,213 +366,57 @@ async def get_sync_logs(
     return [_log_out(log) for log in logs]
 
 
-# ─── 5. Mock ERP Endpoints ────────────────────────────────────────────────────
-# These return realistic mock data per ERP system.
-# Remove in production — replace with live ERP API calls.
-
-_MOCK_ACCOUNTS = {
-    "SAP_S4HANA": [
-        {"HKONT": "100000", "TXT50": "Cash and Bank", "type": "ASSET"},
-        {"HKONT": "200000", "TXT50": "Trade Payables", "type": "LIABILITY"},
-        {"HKONT": "400000", "TXT50": "Revenue - Products", "type": "REVENUE"},
-        {"HKONT": "500000", "TXT50": "Cost of Goods Sold", "type": "EXPENSE"},
-        {"HKONT": "600000", "TXT50": "Operating Expenses", "type": "EXPENSE"},
-    ],
-    "ORACLE_FUSION": [
-        {"CodeCombinationId": "01.1000", "AccountName": "Cash", "type": "ASSET"},
-        {"CodeCombinationId": "01.2000", "AccountName": "Accounts Payable", "type": "LIABILITY"},
-        {"CodeCombinationId": "01.4000", "AccountName": "Revenue", "type": "REVENUE"},
-    ],
-    "TALLY_PRIME": [
-        {"LEDGERNAME": "Bank Account", "GROUPNAME": "Bank Accounts"},
-        {"LEDGERNAME": "Sundry Creditors", "GROUPNAME": "Sundry Creditors"},
-        {"LEDGERNAME": "Sales Account", "GROUPNAME": "Sales Accounts"},
-        {"LEDGERNAME": "Purchase Account", "GROUPNAME": "Purchase Accounts"},
-    ],
-    "ZOHO_BOOKS": [
-        {"account_id": "460000000000348", "account_name": "Cash", "account_type": "cash"},
-        {"account_id": "460000000000352", "account_name": "Accounts Receivable", "account_type": "accounts_receivable"},
-    ],
-    "QUICKBOOKS": [
-        {"Id": "35", "Name": "Checking", "AccountType": "Bank"},
-        {"Id": "33", "Name": "Accounts Payable", "AccountType": "Accounts Payable"},
-    ],
-    "GENERIC_CSV": [
-        {"account_code": "1001", "account_name": "Cash"},
-        {"account_code": "2001", "account_name": "Payables"},
-    ],
-}
-
-def _mock_sap_entry(i: int) -> dict:
-    amounts = [12500.00, 87430.50, 230000.00, 5000.00, 450000.00, 100000.00]
-    return {
-        "BELNR": f"5100{i:05d}", "BUDAT": f"2026-01-{(i % 28) + 1:02d}",
-        "HKONT": random.choice(["100000", "200000", "400000", "500000"]),
-        "TXT50": "Operating Account", "DMBTR": random.choice(amounts),
-        "SHKZG": random.choice(["S", "S", "H"]),
-        "WAERS": "INR", "SGTXT": f"SAP Auto-posting {i}",
-        "NAME1": random.choice(["Infosys Ltd", "TCS Ltd", "Wipro Ltd", "HCL Tech"]),
-        "LIFNR": f"V{i:05d}", "MWSKZ": "A1", "KOSTL": f"CC{100 + (i % 5)}",
-    }
-
-def _mock_oracle_entry(i: int) -> dict:
-    amounts = [8750.00, 145000.75, 22000.00, 680000.00]
-    dr = random.choice([True, False])
-    amt = random.choice(amounts)
-    return {
-        "JournalEntryLineId": f"ORA-{i:06d}",
-        "AccountedDate": f"2026-01-{(i % 28) + 1:02d}",
-        "CodeCombinationId": random.choice(["01.1000", "01.2000", "01.4000"]),
-        "AccountName": "GL Account", "CurrencyCode": "USD",
-        "AcctdDr": amt if dr else 0.0, "AcctdCr": 0.0 if dr else amt,
-        "PartyName": random.choice(["Oracle Corp", "Deloitte", "EY", "PwC"]),
-        "PartyId": f"P{i:05d}", "Description": f"Oracle journal {i}",
-    }
-
-def _mock_tally_entry(i: int) -> dict:
-    amounts = [50000.00, 100000.00, 250000.00, 75000.00, 1000000.00]
-    vtype = random.choice(["Payment", "Receipt", "Journal", "Purchase"])
-    return {
-        "VOUCHERNUMBER": f"PV-2026-{i:05d}", "VOUCHERTYPE": vtype,
-        "DATE": f"20260{(i % 3) + 1}{(i % 28) + 1:02d}",
-        "LEDGERNAME": random.choice(["Bank Account", "Sundry Creditors", "Sales Account"]),
-        "PARTYLEDGERNAME": random.choice(["Reliance Ind", "HDFC Ltd", "TCS", "Infosys"]),
-        "AMOUNT": random.choice(amounts), "NARRATION": f"Tally voucher {i}",
-        "GSTREGISTRATIONNUMBER": f"27AABCT{i:04d}Q1Z{i % 9}",
-        "CURRENCY": "INR",
-    }
-
-def _mock_zoho_entry(i: int) -> dict:
-    amounts = [4200.00, 18900.50, 75000.00, 230000.00]
-    return {
-        "journal_id": f"J-{i:06d}",
-        "date": f"2026-01-{(i % 28) + 1:02d}",
-        "reference_number": f"ZB-REF-{i:05d}",
-        "debit_or_credit": random.choice(["debit", "credit"]),
-        "amount": random.choice(amounts), "currency_code": "INR",
-        "account_id": random.choice(["460000000000348", "460000000000352"]),
-        "account_name": "Operating Account",
-        "vendor_name": random.choice(["Zoho Corp", "Freshworks", "BrowserStack"]),
-        "vendor_id": f"ZV{i:04d}",
-        "notes": f"Zoho journal entry {i}", "tax_id": f"GST-{i:04d}",
-    }
-
-def _mock_qbo_entry(i: int) -> dict:
-    amounts = [1250.00, 42000.00, 8900.75, 175000.00]
-    posting = random.choice(["Debit", "Credit"])
-    return {
-        "Id": str(i), "TxnDate": f"2026-01-{(i % 28) + 1:02d}",
-        "Amount": random.choice(amounts),
-        "JournalEntryLineDetail": {
-            "PostingType": posting,
-            "AccountRef": {"value": random.choice(["35", "33"]), "name": "Checking"},
-            "Entity": {"name": random.choice(["Intuit Inc", "Stripe", "Shopify"]), "type": "CUSTOMER"},
-            "ClassRef": {"name": "Operations"},
-        },
-        "CurrencyRef": {"value": "USD"},
-        "Description": f"QBO transaction {i}",
-    }
-
-_MOCK_GENERATORS = {
-    "SAP_S4HANA":    _mock_sap_entry,
-    "ORACLE_FUSION": _mock_oracle_entry,
-    "TALLY_PRIME":   _mock_tally_entry,
-    "ZOHO_BOOKS":    _mock_zoho_entry,
-    "QUICKBOOKS":    _mock_qbo_entry,
-}
-
-
-@router.post(
-    "/mock/erp/{system}/journal-entries",
-    summary="[MOCK] Generate realistic ERP journal entries for the given system",
-    tags=["Mock ERP Data"],
+@router.get(
+    "/erp/connections/{connection_id}/trial-balance",
+    response_model=ExternalERPOut,
+    summary="Fetch the live trial balance from the configured ERP connection",
 )
-async def mock_journal_entries(
-    system: ERPSystemLiteral = Path(...),
-    count: int = Query(default=20, ge=1, le=200, description="Number of entries to generate"),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
-) -> dict:
-    """
-    Returns simulated journal entries in the native format of the given ERP.
-    Feed these directly into POST /erp/connections/{id}/sync to test the pipeline.
-    """
-    generator = _MOCK_GENERATORS.get(system)
-    if not generator:
-        # GENERIC_CSV has no dedicated generator
-        entries = [
-            {
-                "ref": f"CSV-{i:05d}", "date": f"2026-01-{(i % 28) + 1:02d}",
-                "amount": round(random.uniform(1000, 500000), 2),
-                "type": random.choice(["DEBIT", "CREDIT"]),
-                "account_code": f"ACC{i % 10:03d}", "account_name": "General Account",
-                "entity": "Unknown Entity", "description": f"CSV row {i}",
-                "currency": "INR",
-            }
-            for i in range(1, count + 1)
-        ]
-    else:
-        entries = [generator(i) for i in range(1, count + 1)]
+async def get_trial_balance(
+    connection_id: str,
+    fiscal_year: int | None = Query(default=None),
+    db: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
+) -> ExternalERPOut:
+    conn = (await db.scalars(
+        select(ERPConnection).where(
+            ERPConnection.id == connection_id,
+            ERPConnection.tenant_id == auth.tenant_id,
+        )
+    )).first()
+    if not conn:
+        raise HTTPException(404, "ERP connection not found.")
 
-    return {
-        "erp_system": system,
-        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "count": len(entries),
-        "entries": entries,
-        "note": "MOCK DATA — safe to ingest via POST /erp/connections/{id}/sync",
-    }
-
-
-@router.post(
-    "/mock/erp/{system}/trial-balance",
-    summary="[MOCK] Generate a trial balance extract for the given ERP system",
-    tags=["Mock ERP Data"],
-)
-async def mock_trial_balance(
-    system: ERPSystemLiteral = Path(...),
-    fiscal_year: int = Query(default=2025),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
-) -> dict:
-    accounts = _MOCK_ACCOUNTS.get(system, _MOCK_ACCOUNTS["GENERIC_CSV"])
-    tb_lines = []
-    for acct in accounts:
-        debit  = round(random.uniform(100000, 5000000), 2)
-        credit = round(random.uniform(100000, 5000000), 2)
-        tb_lines.append({
-            **acct,
-            "fiscal_year":    fiscal_year,
-            "period":         "12",
-            "debit_balance":  debit,
-            "credit_balance": credit,
-            "net_balance":    round(debit - credit, 2),
-            "currency":       "INR" if system in ("SAP_S4HANA", "TALLY_PRIME") else "USD",
-        })
-    return {
-        "erp_system":    system,
-        "fiscal_year":   fiscal_year,
-        "generated_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "total_accounts": len(tb_lines),
-        "trial_balance": tb_lines,
-        "note": "MOCK DATA",
-    }
+    try:
+        payload = await get_connector(conn.erp_system).fetch_trial_balance(conn, fiscal_year=fiscal_year)
+    except ERPConnectorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ExternalERPOut(**payload)
 
 
 @router.get(
-    "/mock/erp/{system}/chart-of-accounts",
-    summary="[MOCK] Return the chart of accounts for the given ERP system",
-    tags=["Mock ERP Data"],
+    "/erp/connections/{connection_id}/chart-of-accounts",
+    response_model=ExternalERPOut,
+    summary="Fetch the live chart of accounts from the configured ERP connection",
 )
-async def mock_chart_of_accounts(
-    system: ERPSystemLiteral = Path(...),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
-) -> dict:
-    accounts = _MOCK_ACCOUNTS.get(system, _MOCK_ACCOUNTS["GENERIC_CSV"])
-    return {
-        "erp_system":  system,
-        "fetched_at":  datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "account_count": len(accounts),
-        "accounts":    accounts,
-        "note": "MOCK DATA",
-    }
+async def get_chart_of_accounts(
+    connection_id: str,
+    db: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
+) -> ExternalERPOut:
+    conn = (await db.scalars(
+        select(ERPConnection).where(
+            ERPConnection.id == connection_id,
+            ERPConnection.tenant_id == auth.tenant_id,
+        )
+    )).first()
+    if not conn:
+        raise HTTPException(404, "ERP connection not found.")
+
+    try:
+        payload = await get_connector(conn.erp_system).fetch_chart_of_accounts(conn)
+    except ERPConnectorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ExternalERPOut(**payload)
 
 
 # ─── Serialisation helpers ────────────────────────────────────────────────────

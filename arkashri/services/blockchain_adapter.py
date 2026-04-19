@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+import httpx
 from arkashri.config import get_settings
 from arkashri.services.canonical import hash_object
 from circuitbreaker import circuit, CircuitBreakerError
@@ -36,46 +37,6 @@ class BlockchainAdapter(Protocol):
     async def check_health(self) -> bool: ...
 
 
-class SimulatedBlockchainAdapter:
-    adapter_key = "SIMULATED_CHAIN"
-    network = "ARKASHRI_SIMNET"
-
-    def anchor(
-        self,
-        *,
-        tenant_id: str,
-        jurisdiction: str,
-        merkle_root: str,
-        window_start_event_id: int,
-        window_end_event_id: int,
-        chain_anchor_id: int,
-    ) -> AttestationResult:
-        material = {
-            "adapter_key": self.adapter_key,
-            "tenant_id": tenant_id,
-            "jurisdiction": jurisdiction,
-            "merkle_root": merkle_root,
-            "window_start_event_id": window_start_event_id,
-            "window_end_event_id": window_end_event_id,
-            "chain_anchor_id": chain_anchor_id,
-        }
-        attestation_hash = hash_object(material)
-        tx_reference = f"sim://{attestation_hash[:28]}"
-        return AttestationResult(
-            adapter_key=self.adapter_key,
-            network=self.network,
-            tx_reference=tx_reference,
-            attestation_hash=attestation_hash,
-            provider_payload={
-                "mode": "deterministic_simulation",
-                "material_hash": attestation_hash,
-            },
-        )
-
-    async def check_health(self) -> bool:
-        return True
-
-
 class HashNotaryAdapter:
     adapter_key = "HASH_NOTARY"
     network = "OFFCHAIN_NOTARY"
@@ -90,6 +51,10 @@ class HashNotaryAdapter:
         window_end_event_id: int,
         chain_anchor_id: int,
     ) -> AttestationResult:
+        settings = get_settings()
+        if not settings.hash_notary_url:
+            raise RuntimeError("HASH_NOTARY adapter requires HASH_NOTARY_URL to be configured.")
+
         material = {
             "adapter_key": self.adapter_key,
             "tenant_id": tenant_id,
@@ -100,20 +65,49 @@ class HashNotaryAdapter:
             "chain_anchor_id": chain_anchor_id,
         }
         attestation_hash = hash_object(material)
-        tx_reference = f"notary://{attestation_hash[-28:]}"
+
+        headers = {"Content-Type": "application/json"}
+        if settings.hash_notary_api_key:
+            headers["Authorization"] = f"Bearer {settings.hash_notary_api_key}"
+
+        response = httpx.post(
+            settings.hash_notary_url.rstrip("/") + "/anchors",
+            headers=headers,
+            json={
+                "tenant_id": tenant_id,
+                "jurisdiction": jurisdiction,
+                "merkle_root": merkle_root,
+                "window_start_event_id": window_start_event_id,
+                "window_end_event_id": window_end_event_id,
+                "chain_anchor_id": chain_anchor_id,
+                "attestation_hash": attestation_hash,
+            },
+            timeout=settings.hash_notary_timeout_seconds,
+        )
+        response.raise_for_status()
+        provider_payload = response.json()
+        tx_reference = provider_payload.get("tx_reference") or provider_payload.get("reference")
+        if not tx_reference:
+            raise RuntimeError("HASH_NOTARY provider response did not include a transaction reference.")
+
         return AttestationResult(
             adapter_key=self.adapter_key,
             network=self.network,
             tx_reference=tx_reference,
             attestation_hash=attestation_hash,
-            provider_payload={
-                "mode": "hash_notary",
-                "signature_stub": attestation_hash[:32],
-            },
+            provider_payload=provider_payload,
         )
 
     async def check_health(self) -> bool:
-        return True
+        settings = get_settings()
+        if not settings.hash_notary_url:
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=settings.hash_notary_timeout_seconds) as client:
+                response = await client.get(settings.hash_notary_url.rstrip("/") + "/health")
+                return response.is_success
+        except Exception:
+            return False
 
 
 class PolkadotAdapter:
@@ -130,6 +124,10 @@ class PolkadotAdapter:
         window_end_event_id: int,
         chain_anchor_id: int,
     ) -> AttestationResult:
+        settings = get_settings()
+        if not settings.polkadot_enabled:
+            raise RuntimeError("POLKADOT adapter is not enabled in this environment.")
+
         material = {
             "adapter_key": self.adapter_key,
             "network": self.network,
@@ -141,28 +139,18 @@ class PolkadotAdapter:
             "chain_anchor_id": chain_anchor_id,
         }
         attestation_hash = hash_object(material)
-        tx_reference = f"polkadot://deterministic/0x{attestation_hash[:48]}"
-        provider_payload: dict = {
-            "mode": "deterministic_polkadot_stub",
-            "extrinsic_stub_hash": f"0x{attestation_hash[:64]}",
-            "relay_chain": "polkadot",
-        }
-
-        settings = get_settings()
-        if settings.polkadot_enabled:
-            try:
-                tx_reference, provider_payload = _submit_polkadot_anchor(
-                    attestation_hash=attestation_hash,
-                    merkle_root=merkle_root,
-                    tenant_id=tenant_id,
-                    jurisdiction=jurisdiction,
-                    window_start_event_id=window_start_event_id,
-                    window_end_event_id=window_end_event_id,
-                    chain_anchor_id=chain_anchor_id,
-                )
-            except CircuitBreakerError:
-                provider_payload["mode"] = "polkadot_circuit_broken"
-                provider_payload["remark"] = "The Polkadot relay connection is temporarily broken. The hash was not physically anchored."
+        try:
+            tx_reference, provider_payload = _submit_polkadot_anchor(
+                attestation_hash=attestation_hash,
+                merkle_root=merkle_root,
+                tenant_id=tenant_id,
+                jurisdiction=jurisdiction,
+                window_start_event_id=window_start_event_id,
+                window_end_event_id=window_end_event_id,
+                chain_anchor_id=chain_anchor_id,
+            )
+        except CircuitBreakerError as exc:
+            raise RuntimeError("Polkadot anchoring circuit is open; the provider is currently unavailable.") from exc
 
         return AttestationResult(
             adapter_key=self.adapter_key,
@@ -175,7 +163,7 @@ class PolkadotAdapter:
     async def check_health(self) -> bool:
         settings = get_settings()
         if not settings.polkadot_enabled:
-            return True
+            return False
         try:
             from substrateinterface import SubstrateInterface
             substrate = SubstrateInterface(url=settings.polkadot_ws_url)
@@ -186,7 +174,6 @@ class PolkadotAdapter:
 
 ADAPTERS: dict[str, BlockchainAdapter] = {
     PolkadotAdapter.adapter_key: PolkadotAdapter(),
-    SimulatedBlockchainAdapter.adapter_key: SimulatedBlockchainAdapter(),
     HashNotaryAdapter.adapter_key: HashNotaryAdapter(),
 }
 

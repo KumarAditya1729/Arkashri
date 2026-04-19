@@ -40,7 +40,7 @@ async def generate_regulatory_pdf(
         select(SealSession).where(SealSession.engagement_id == engagement_id)
     )).first()
 
-    # 2. Build HTML Template (Simplified for demo, usually uses Jinja2)
+    # 2. Build the report HTML payload.
     html_content = f"""
     <html>
     <head>
@@ -87,9 +87,5 @@ async def generate_regulatory_pdf(
         logger.info("regulatory_pdf_generated", path=file_path, engagement_id=str(engagement_id))
         return file_path
     except Exception as e:
-        # Fallback to text file if weasyprint fails or is not installed
-        txt_path = file_path.replace(".pdf", ".txt")
-        with open(txt_path, "w") as f:
-            f.write(html_content)
-        logger.warning("pdf_generation_failed_fallback_to_txt", error=str(e), path=txt_path)
-        return txt_path
+        logger.error("pdf_generation_failed", error=str(e), engagement_id=str(engagement_id))
+        raise RuntimeError("Regulatory PDF generation failed") from e
