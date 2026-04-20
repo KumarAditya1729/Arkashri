@@ -35,7 +35,7 @@ from arkashri.models import (
     Engagement, SealSession, SealSignature,
     AuditEvent,
 )
-from arkashri.services.seal import compute_seal_hash, compute_seal_signature
+from arkashri.services.seal import compute_seal_hash, verify_seal_signature
 
 logger = logging.getLogger(__name__)
 
@@ -165,22 +165,26 @@ async def verify_audit_seal(
             "— bundle contents have been altered since sealing."
         )
 
-    # ── 3. Recompute HMAC signature ───────────────────────────────────────────
+    # ── 3. Verify ECDSA signature ───────────────────────────────────────────
     hmac_match = False
     try:
-        # The stored HMAC signature is not in the engagement table — it's in the original
-        # sealed_bundle that was returned by generate_audit_seal(). We re-derive it:
-        compute_seal_signature(stored_bundle, key_version)
-
-        # For verification, we compare computed vs re-computed (both from same payload)
-        # In production, the original HMAC would be retrieved from S3 WORM alongside payload
-        # Here, we verify internal consistency: if payload is intact, HMAC must re-derive cleanly
-        hmac_match = True   # If compute_seal_signature didn't raise, key_version is valid
-        logger.info("HMAC re-derived for key_version=%s engagement=%s", key_version, engagement_id)
+        # The stored ECDSA signature is not in the engagement table — it's in the original
+        # sealed_bundle that was returned by generate_audit_seal(). We verify it directly using the public key.
+        
+        stored_signature = engagement.seal_bundle.get("signature") if engagement.seal_bundle else None
+        if not stored_signature:
+            mismatches.append("Signature not found in the stored seal bundle.")
+        else:
+            hmac_match = verify_seal_signature(engagement.tenant_id, stored_bundle, stored_signature)
+            
+            if hmac_match:
+                logger.info("ECDSA signature verified for engagement=%s", engagement_id)
+            else:
+                mismatches.append("ECDSA signature verification failed: Cryptographic mismatch")
     except ValueError as e:
-        mismatches.append(f"HMAC key version error: {e}")
+        mismatches.append(f"Signature key version error: {e}")
     except Exception as e:
-        mismatches.append(f"HMAC recomputation failed: {e}")
+        mismatches.append(f"Signature verification failed unexpectedly: {e}")
 
     # ── 4. Verify partner signature hashes ────────────────────────────────────
     seal_sess = (await session.scalars(

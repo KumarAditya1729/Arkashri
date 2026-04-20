@@ -52,5 +52,14 @@ async def db_session(tmp_path):
     
     async with TestSessionLocal() as session:
         yield session
-        
+
     await test_engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def test_session(db_session):
+    """
+    Alias for db_session — backward-compat for tests/test_data_governance.py
+    and any other test that uses the older fixture name.
+    """
+    yield db_session

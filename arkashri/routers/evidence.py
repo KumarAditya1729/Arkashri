@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Form
 import structlog
+import filetype
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -83,15 +84,47 @@ async def upload_evidence(
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
+    # M-9 FIX: sealed engagements are WORM — no mutations allowed
+    from arkashri.models import EngagementStatus
+    if engagement.status == EngagementStatus.SEALED:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot upload evidence to a sealed engagement. The audit bundle is WORM-locked."
+        )
+
     # Validate file type and size
     settings = get_settings()
     allowed_types = {item.strip() for item in settings.allowed_file_types.split(",") if item.strip()}
-    file_content_type = (file.content_type or "").strip().lower()
 
-    if file_content_type not in allowed_types:
+    # H-NEW-8: Sanitize and validate file type server-side (DO NOT trust client Content-Type)
+    # Read first 2KB for sniffing
+    head = await file.read(2048)
+    await file.seek(0)
+    
+    kind = filetype.guess(head)
+    if kind is None:
+        # Fallback for plain text if binary sniff fails
+        try:
+            head.decode('utf-8')
+            detected_mime = "text/plain"
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=415, 
+                detail="Unsupported or malicious file type detected. Please upload valid audit evidence (PDF, Excel, Images, CSV, Text)."
+            )
+    else:
+        detected_mime = kind.mime
+
+    if detected_mime not in allowed_types:
+        logger.warning(
+            "BLOCKED_UPLOAD_MIME",
+            detected=detected_mime,
+            allowed=allowed_types,
+            user=auth.client_name,  # C-4 FIX: was `current_user.email` (undefined)
+        )
         raise HTTPException(
-            status_code=400, 
-            detail=f"File content type '{file_content_type}' is not allowed. Allowed types: {', '.join(sorted(allowed_types))}"
+            status_code=415,
+            detail=f"File content type '{detected_mime}' is not permitted. Allowed types: {', '.join(sorted(allowed_types))}"
         )
 
     file_bytes = await file.read()
@@ -102,10 +135,20 @@ async def upload_evidence(
         )
     await file.seek(0)
 
-    # Count existing for ref numbering
-    count = len(list(await session.scalars(
-        select(EvidenceRecord).where(EvidenceRecord.engagement_id == eid)
-    )))
+    # H-8 FIX: Use MAX-based next ref instead of COUNT to avoid duplicate refs
+    # under concurrent uploads. COUNT returns the same value to two racing requests;
+    # MAX(evd_ref) + 1 pattern is safe when combined with DB-level uniqueness.
+    from sqlalchemy import func as _func
+    max_ref_result = await session.scalar(
+        select(_func.max(EvidenceRecord.evd_ref)).where(EvidenceRecord.engagement_id == eid)
+    )
+    if max_ref_result and max_ref_result.startswith("EVD-"):
+        try:
+            next_num = int(max_ref_result[4:]) + 1
+        except ValueError:
+            next_num = 1
+    else:
+        next_num = 1
 
     # Save file to the configured evidence store
     file_path = await evidence_service.upload_evidence(engagement.tenant_id, file)
@@ -123,7 +166,7 @@ async def upload_evidence(
     record = EvidenceRecord(
         engagement_id = eid,
         tenant_id     = engagement.tenant_id,
-        evd_ref       = f"EVD-{count + 1:03d}",
+        evd_ref       = f"EVD-{next_num:03d}",
         file_name     = fname,
         file_path     = file_path,
         file_size_kb  = size_kb,
@@ -199,6 +242,15 @@ async def delete_evidence(
     record = await session.get(EvidenceRecord, evd_id)
     if not record or record.engagement_id != eid:
         raise HTTPException(status_code=404, detail="Evidence not found")
+
+    # M-9 FIX: sealed engagements are WORM — no mutations allowed
+    from arkashri.models import EngagementStatus
+    eng_for_delete = await session.get(Engagement, eid)
+    if eng_for_delete and eng_for_delete.status == EngagementStatus.SEALED:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete evidence from a sealed engagement. The audit bundle is WORM-locked."
+        )
     await evidence_service.delete_evidence(record.file_path)
     await session.delete(record)
     await session.commit()

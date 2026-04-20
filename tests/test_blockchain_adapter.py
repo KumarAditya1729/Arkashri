@@ -13,11 +13,12 @@ def test_adapter_catalog_excludes_simulated_providers() -> None:
     assert "SIMULATED_CHAIN" not in adapter_keys
 
 
+@pytest.mark.asyncio
 @patch("arkashri.services.blockchain_adapter.get_settings")
-def test_polkadot_adapter_fails_closed_when_disabled(mock_get_settings) -> None:
+async def test_polkadot_adapter_fails_closed_when_disabled(mock_get_settings) -> None:
     mock_get_settings.return_value.polkadot_enabled = False
     with pytest.raises(RuntimeError):
-        run_adapter_anchor(
+        await run_adapter_anchor(
             "POLKADOT",
             tenant_id="tenant_a",
             jurisdiction="IN",
@@ -28,12 +29,13 @@ def test_polkadot_adapter_fails_closed_when_disabled(mock_get_settings) -> None:
         )
 
 
+@pytest.mark.asyncio
 @patch("arkashri.services.blockchain_adapter.get_settings")
-def test_hash_notary_requires_external_provider(mock_get_settings) -> None:
+async def test_hash_notary_requires_external_provider(mock_get_settings) -> None:
     mock_get_settings.return_value.hash_notary_url = None
 
     with pytest.raises(RuntimeError):
-        run_adapter_anchor(
+        await run_adapter_anchor(
             "HASH_NOTARY",
             tenant_id="tenant_a",
             jurisdiction="IN",

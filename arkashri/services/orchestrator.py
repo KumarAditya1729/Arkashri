@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import structlog  # C-10 FIX: logger was used but never imported
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +21,8 @@ from arkashri.models import (
 )
 from arkashri.services.canonical import hash_object
 from arkashri.services.workflow_pack import load_workflow_template
+
+logger = structlog.get_logger(__name__)  # C-10 FIX
 
 APPROVAL_ROLE_KEYWORDS = ("partner", "manager", "director", "head")
 
@@ -173,28 +176,29 @@ async def execute_run(session: AsyncSession, run: AuditRun, *, max_steps: int = 
 
         output_payload = await _build_step_output(session, run, step)
         step.output_payload = output_payload
-        
         # 🔗 Blockchain Anchoring Hook
-        # Anchor the output hash to ensure immutable provenance of this audit step
+        # Heavy multi-chain broadcasting is pushed to the background
+        # to prevent freezing the API request or event loop.
         output_hash = hash_object(output_payload)
-        from arkashri.services.multi_chain_blockchain import multi_chain_blockchain_service
+        
+        # Enqueue the background task
         try:
-            # We anchor the hash of the output to ensure its integrity
-            anchor_result = await multi_chain_blockchain_service.anchor_evidence_multi_chain(
-                evidence_hash=output_hash,
-                metadata={
-                    "run_id": str(run.id),
-                    "step_id": str(step.id),
-                    "phase": step.phase_id,
-                    "action": step.action,
-                    "tenant_id": run.tenant_id
-                }
-            )
-            blockchain_txs = anchor_result.get("networks_anchored", [])
-            logger.info("audit_step_anchored", step_id=str(step.id), networks=blockchain_txs)
+            if redis_pool:
+                await redis_pool.enqueue_job(
+                    "anchor_blockchain_task",
+                    step_id=str(step.id),
+                    run_id=str(run.id),
+                    tenant_id=run.tenant_id,
+                    evidence_hash=output_hash,
+                    phase=step.phase_id,
+                    action=step.action,
+                )
+                blockchain_state = ["PENDING_BACKGROUND"]
+            else:
+                blockchain_state = ["SKIPPED_NO_REDIS"]
         except Exception as e:
-            logger.warning("audit_step_anchoring_failed", step_id=str(step.id), error=str(e))
-            blockchain_txs = []
+            logger.warning("enqueue_blockchain_anchoring_failed", step_id=str(step.id), error=str(e))
+            blockchain_state = ["ENQUEUE_FAILED"]
 
         step.evidence_payload = {
             "output_hash": output_hash,
@@ -206,7 +210,7 @@ async def execute_run(session: AsyncSession, run: AuditRun, *, max_steps: int = 
                 }
             ),
             "executed_at": now.isoformat(),
-            "blockchain_anchors": blockchain_txs
+            "blockchain_anchors": blockchain_state
         }
         step.status = AuditStepStatus.COMPLETED
         step.completed_at = now
@@ -236,21 +240,31 @@ async def execute_run(session: AsyncSession, run: AuditRun, *, max_steps: int = 
             run.status = AuditRunStatus.COMPLETED
             run.completed_at = datetime.now(timezone.utc)
             run.status_reason = "All workflow steps completed."
-            
-            from arq import create_pool
-            from arq.connections import RedisSettings
-            from arkashri.config import get_settings
-            
-            conf = get_settings()
-            redis_pool = await create_pool(RedisSettings.from_dsn(conf.redis_url))
-            
+
+            # H-7 FIX: Reuse the app-level ARQ pool instead of creating
+            # a new connection pool on every run completion.
+            # Creating pools per-run caused connection exhaustion under load.
+            try:
+                from arkashri.main import app as _app
+                redis_pool = getattr(_app.state, "redis_pool", None)
+            except Exception:
+                redis_pool = None
+
+            if redis_pool is None:
+                # Fallback (tests / cold-start): create a single-use pool
+                from arq import create_pool
+                from arq.connections import RedisSettings
+                from arkashri.config import get_settings
+                conf = get_settings()
+                redis_pool = await create_pool(RedisSettings.from_dsn(conf.redis_url))
+
             # Formulate the payload object to push to S3 WORM archive
             compiled_evidence = {
-                step.step_id: step.evidence_payload 
-                for step in steps 
+                step.step_id: step.evidence_payload
+                for step in steps
                 if step.status == AuditStepStatus.COMPLETED
             }
-            
+
             await redis_pool.enqueue_job(
                 "archive_audit_task",
                 run_id=str(run.id),
@@ -446,12 +460,20 @@ async def _step_requires_pending_approval(session: AsyncSession, run: AuditRun, 
     if existing_open is not None:
         return True
 
-    # Get connection to ARQ redis to enqueue notification emails
-    from arq import create_pool
-    from arq.connections import RedisSettings
-    from arkashri.config import get_settings
-    settings = get_settings()
-    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    # H-7 FIX: Reuse app-level ARQ pool; create one only when unavailable (tests).
+    try:
+        from arkashri.main import app as _app
+        redis = getattr(_app.state, "redis_pool", None)
+    except Exception:
+        redis = None
+
+    _pool_owned = False
+    if redis is None:
+        from arq import create_pool
+        from arq.connections import RedisSettings
+        settings = get_settings()
+        redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        _pool_owned = True
 
     request = ApprovalRequest(
         tenant_id=run.tenant_id,
@@ -493,5 +515,6 @@ async def _step_requires_pending_approval(session: AsyncSession, run: AuditRun, 
             f"Hello,\n\nYour review is required to unblock the audit '{run.audit_type}' at phase '{step.phase_id}'.\n\nLogin to the Arkashri dashboard to digitally sign this step.",
             None,
         )
-    await redis.close()
+    if _pool_owned:
+        await redis.close()  # Only close pools we created; never close the app pool
     return True

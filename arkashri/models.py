@@ -551,6 +551,9 @@ class AuditEvent(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    engagement_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("engagement.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     jurisdiction: Mapped[str] = mapped_column(String(20), nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     entity_type: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -1589,9 +1592,28 @@ class SystemAuditLog(Base):
     
     # ── Evidence Hardening: SOC 2 Type II Proofs ──────────────────────────────
     content_hash: Mapped[str | None] = mapped_column(String(64))  # SHA-256 canonical hash
-    signature: Mapped[str | None] = mapped_column(String(128))    # HMAC signature using system master key
+    signature: Mapped[str | None] = mapped_column(String(128))    # ECDSA signature using tenant key
     
+    # ── Data Governance (Crypto-Shredding) ────────────────────────────────────
+    legal_hold: Mapped[bool] = mapped_column(Boolean, default=False)
+    data_classification: Mapped[str] = mapped_column(String(50), default="GENERAL") # PII, FINANCIAL, GENERAL
+    encrypted_dek: Mapped[str | None] = mapped_column(String(255)) # KMS encrypted Data Encryption Key
+    is_shredded: Mapped[bool] = mapped_column(Boolean, default=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+class RetentionExecutionLog(Base):
+    """Immutable proof that a precise data retention policy was enforced."""
+    __tablename__ = "retention_execution_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(100), index=True)
+    target_audit_log_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True))
+    policy_version: Mapped[str] = mapped_column(String(50))
+    shred_proof_hash: Mapped[str] = mapped_column(String(64))
+    executed_by: Mapped[str] = mapped_column(String(100))
+    signature: Mapped[str | None] = mapped_column(String(128))
+    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 # ─── Gap 7: Standards Update Pipeline Models ──────────────────────────────────
@@ -1722,3 +1744,34 @@ class ClientPortalNotificationSubscription(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     engagement: Mapped[Engagement] = relationship()
+
+# ─── Trust OS: Native Transparency and Governance Models ──────────────────────
+
+class KeyLifecycleEvent(Base):
+    __tablename__ = "key_lifecycle_event"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(100), index=True)
+    key_id: Mapped[str] = mapped_column(String(255), index=True)
+    event_type: Mapped[str] = mapped_column(String(50)) # CREATED, ROTATED, REVOKED
+    public_key_pem: Mapped[str] = mapped_column(Text)
+    active_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    active_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    root_signature: Mapped[str] = mapped_column(String(255)) # Signed by Arkashri Root CA
+
+class TransparencyLogEntry(Base):
+    __tablename__ = "transparency_log_entry"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entry_type: Mapped[str] = mapped_column(String(50)) # KEY_EVENT, DAILY_ROOT
+    payload_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    previous_hash: Mapped[str] = mapped_column(String(64))
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    merkle_tree_state: Mapped[str] = mapped_column(String(64))
+
+class DisasterRecoveryLog(Base):
+    __tablename__ = "disaster_recovery_log"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rpo_seconds: Mapped[int] = mapped_column(Integer)
+    rto_seconds: Mapped[int] = mapped_column(Integer)
+    merkle_verification_status: Mapped[str] = mapped_column(String(50))
+    failover_region: Mapped[str] = mapped_column(String(50))
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

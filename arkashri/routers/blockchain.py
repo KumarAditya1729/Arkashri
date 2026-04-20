@@ -45,35 +45,41 @@ async def blockchain_anchor(
         anchor: ChainAnchor | None = None
         if payload.chain_anchor_id > 0:
             anchor = await session.get(ChainAnchor, payload.chain_anchor_id)
-            if anchor is not None and (
-                anchor.tenant_id != tenant_id or anchor.jurisdiction != jurisdiction
-            ):
-                raise HTTPException(status_code=409, detail="chain_anchor_id belongs to a different tenant scope")
+            if anchor is not None:
+                # H-7: Anchors are IMMUTABLE once created.
+                # Core fields (merkle_root, window IDs) cannot be changed after creation.
+                # Only new ChainAttestations (re-notarisations) can be appended.
+                if anchor.tenant_id != tenant_id or anchor.jurisdiction != jurisdiction:
+                    raise HTTPException(status_code=409, detail="chain_anchor_id belongs to a different tenant scope")
+                # Immutability check: reject any attempt to change core anchor fields.
+                if (
+                    anchor.merkle_root != payload.merkle_root
+                    or anchor.window_start_event_id != payload.window_start_event_id
+                    or anchor.window_end_event_id != payload.window_end_event_id
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(
+                            f"ChainAnchor {payload.chain_anchor_id} already exists and is immutable. "
+                            "Core fields (merkle_root, window IDs) cannot be changed after creation. "
+                            "To add an additional attestation for the same anchor, submit with matching fields."
+                        ),
+                    )
 
         if anchor is None:
-            anchor_kwargs = {
-                "tenant_id": tenant_id,
-                "jurisdiction": jurisdiction,
-                "window_start_event_id": payload.window_start_event_id,
-                "window_end_event_id": payload.window_end_event_id,
-                "merkle_root": payload.merkle_root,
-                "anchor_provider": payload.adapter_key,
-                "external_reference": payload.external_reference or attestation_result.tx_reference,
-            }
-            if payload.chain_anchor_id > 0:
-                anchor = ChainAnchor(id=payload.chain_anchor_id, **anchor_kwargs)
-            else:
-                anchor = ChainAnchor(**anchor_kwargs)
+            anchor = ChainAnchor(
+                tenant_id=tenant_id,
+                jurisdiction=jurisdiction,
+                window_start_event_id=payload.window_start_event_id,
+                window_end_event_id=payload.window_end_event_id,
+                merkle_root=payload.merkle_root,
+                anchor_provider=payload.adapter_key,
+                external_reference=payload.external_reference or attestation_result.tx_reference,
+            )
             session.add(anchor)
             await session.flush()
-        else:
-            anchor.window_start_event_id = payload.window_start_event_id
-            anchor.window_end_event_id = payload.window_end_event_id
-            anchor.merkle_root = payload.merkle_root
-            anchor.anchor_provider = payload.adapter_key
-            anchor.external_reference = payload.external_reference or attestation_result.tx_reference
-            session.add(anchor)
 
+        # Always create a new attestation record (append-only — never overwrite)
         attestation = ChainAttestation(
             chain_anchor_id=anchor.id,
             adapter_key=attestation_result.adapter_key,

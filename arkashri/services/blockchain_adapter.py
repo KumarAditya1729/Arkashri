@@ -1,6 +1,8 @@
 # pyre-ignore-all-errors
 from __future__ import annotations
 
+import asyncio
+
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -23,7 +25,7 @@ class BlockchainAdapter(Protocol):
     adapter_key: str
     network: str
 
-    def anchor(
+    async def anchor(
         self,
         *,
         tenant_id: str,
@@ -41,7 +43,7 @@ class HashNotaryAdapter:
     adapter_key = "HASH_NOTARY"
     network = "OFFCHAIN_NOTARY"
 
-    def anchor(
+    async def anchor(
         self,
         *,
         tenant_id: str,
@@ -70,20 +72,21 @@ class HashNotaryAdapter:
         if settings.hash_notary_api_key:
             headers["Authorization"] = f"Bearer {settings.hash_notary_api_key}"
 
-        response = httpx.post(
-            settings.hash_notary_url.rstrip("/") + "/anchors",
-            headers=headers,
-            json={
-                "tenant_id": tenant_id,
-                "jurisdiction": jurisdiction,
-                "merkle_root": merkle_root,
-                "window_start_event_id": window_start_event_id,
-                "window_end_event_id": window_end_event_id,
-                "chain_anchor_id": chain_anchor_id,
-                "attestation_hash": attestation_hash,
-            },
-            timeout=settings.hash_notary_timeout_seconds,
-        )
+        # H-10: use async httpx so we do not block the event loop during the anchor call.
+        async with httpx.AsyncClient(timeout=settings.hash_notary_timeout_seconds) as client:
+            response = await client.post(
+                settings.hash_notary_url.rstrip("/") + "/anchors",
+                headers=headers,
+                json={
+                    "tenant_id": tenant_id,
+                    "jurisdiction": jurisdiction,
+                    "merkle_root": merkle_root,
+                    "window_start_event_id": window_start_event_id,
+                    "window_end_event_id": window_end_event_id,
+                    "chain_anchor_id": chain_anchor_id,
+                    "attestation_hash": attestation_hash,
+                },
+            )
         response.raise_for_status()
         provider_payload = response.json()
         tx_reference = provider_payload.get("tx_reference") or provider_payload.get("reference")
@@ -114,7 +117,7 @@ class PolkadotAdapter:
     adapter_key = "POLKADOT"
     network = "POLKADOT_MAINNET"
 
-    def anchor(
+    async def anchor(
         self,
         *,
         tenant_id: str,
@@ -139,15 +142,22 @@ class PolkadotAdapter:
             "chain_anchor_id": chain_anchor_id,
         }
         attestation_hash = hash_object(material)
+
+        # H-10: offload the blocking substrate-interface call to a thread pool
+        # so it does not stall the async event loop.
+        loop = asyncio.get_event_loop()
         try:
-            tx_reference, provider_payload = _submit_polkadot_anchor(
-                attestation_hash=attestation_hash,
-                merkle_root=merkle_root,
-                tenant_id=tenant_id,
-                jurisdiction=jurisdiction,
-                window_start_event_id=window_start_event_id,
-                window_end_event_id=window_end_event_id,
-                chain_anchor_id=chain_anchor_id,
+            tx_reference, provider_payload = await loop.run_in_executor(
+                None,
+                lambda: _submit_polkadot_anchor(
+                    attestation_hash=attestation_hash,
+                    merkle_root=merkle_root,
+                    tenant_id=tenant_id,
+                    jurisdiction=jurisdiction,
+                    window_start_event_id=window_start_event_id,
+                    window_end_event_id=window_end_event_id,
+                    chain_anchor_id=chain_anchor_id,
+                ),
             )
         except CircuitBreakerError as exc:
             raise RuntimeError("Polkadot anchoring circuit is open; the provider is currently unavailable.") from exc
@@ -185,7 +195,7 @@ def list_adapters() -> list[dict[str, str]]:
     ]
 
 
-def run_adapter_anchor(
+async def run_adapter_anchor(
     adapter_key: str,
     *,
     tenant_id: str,
@@ -198,7 +208,7 @@ def run_adapter_anchor(
     adapter = ADAPTERS.get(adapter_key)
     if adapter is None:
         raise ValueError(f"Unknown blockchain adapter: {adapter_key}")
-    return adapter.anchor(
+    return await adapter.anchor(
         tenant_id=tenant_id,
         jurisdiction=jurisdiction,
         merkle_root=merkle_root,

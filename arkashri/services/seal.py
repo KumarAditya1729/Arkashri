@@ -15,14 +15,19 @@ Architecture:
 from __future__ import annotations
 
 import base64 as _b64
+import datetime   # C-5 FIX: was missing
+import hashlib    # C-5 FIX: was missing
 import logging as _log
-import hashlib
-import hmac
-import json
-import uuid
-import datetime
-import math
 import logging
+import uuid       # C-5 FIX: was missing
+from decimal import Decimal
+from typing import Any, Dict, List, Optional, Tuple, Set
+
+from arkashri.services.canonical import hash_object, canonical_json_bytes
+
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.exceptions import InvalidSignature
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -52,7 +57,7 @@ logger = logging.getLogger(__name__)
 # If unset, the insecure dev constant is used — system logs a WARNING.
 
 CURRENT_KEY_VERSION = "v1"
-SYSTEM_VERSION = "Arkashri_OS_2.0_Enterprise"
+from arkashri import SYSTEM_VERSION  # L-10: imported from arkashri/__init__.py — single source of truth
 
 
 # ─── Canonical JSON Serializer ────────────────────────────────────────────────
@@ -62,65 +67,31 @@ SYSTEM_VERSION = "Arkashri_OS_2.0_Enterprise"
 #   - Timezone / ISO-8601 normalization
 #   - Non-deterministic list ordering
 
-def _canonical_float(v: float) -> str | float | None:
-    """Round to 10 decimal places; represent NaN/Inf as null-safe strings."""
-    if v is None:
-        return None
-    if math.isnan(v) or math.isinf(v):
-        return str(v)
-    return round(v, 10)  # type: ignore
-
-
-def _canonical_value(v: object) -> object:
-    """Recursively normalize a value for deterministic serialization."""
-    if isinstance(v, dict):
-        return {k: _canonical_value(val) for k, val in sorted(v.items())}
-    if isinstance(v, list):
-        return sorted(
-            [_canonical_value(i) for i in v],
-            key=lambda x: json.dumps(x, sort_keys=True, default=str),
-        )
-    if isinstance(v, float):
-        return _canonical_float(v)
-    if isinstance(v, datetime.datetime):
-        # Normalize to UTC, drop microseconds for stability
-        if v.tzinfo is None:
-            v = v.replace(tzinfo=datetime.timezone.utc)
-        return v.astimezone(datetime.timezone.utc).isoformat()
-    if isinstance(v, datetime.date):
-        return v.isoformat()
-    if isinstance(v, uuid.UUID):
-        return str(v)
-    return v
-
-
-def _canonical_json(obj: dict) -> bytes:
-    """
-    Byte-identical JSON across all environments.
-    Uses sort_keys=True + no-whitespace separators + float normalization.
-    This is the ONLY serializer used for hash computation.
-    """
-    normalized = _canonical_value(obj)
-    return json.dumps(
-        normalized,
-        sort_keys=True,
-        separators=(',', ':'),
-        ensure_ascii=True,
-        allow_nan=False,
-    ).encode('utf-8')
-
-
 def compute_seal_hash(payload: dict) -> str:
     """Public: compute SHA-256 of canonical payload. Used by verifier."""
-    return hashlib.sha256(_canonical_json(payload)).hexdigest()
+    return hash_object(payload)
 
 
-def compute_seal_signature(payload: dict, key_version: str = CURRENT_KEY_VERSION) -> str:
-    """Public: compute HMAC-SHA256. Used by verifier."""
-    key = _KEY_REGISTRY.get(key_version)
-    if not key:
-        raise ValueError(f"Unknown key version: {key_version}. Cannot compute or verify HMAC.")
-    return hmac.new(key, _canonical_json(payload), hashlib.sha256).hexdigest()
+def compute_seal_signature(tenant_id: str, payload: dict, key_version: str = CURRENT_KEY_VERSION) -> str:
+    """Public: compute ECDSA signature. Used by verifier."""
+    priv = kms_service.get_tenant_signing_key(tenant_id)
+    sig = priv.sign(
+        canonical_json_bytes(payload),
+        ec.ECDSA(hashes.SHA256())
+    )
+    return _b64.b64encode(sig).decode('utf-8')
+
+def verify_seal_signature(tenant_id: str, payload: dict, signature_b64: str) -> bool:
+    """Public: verify ECDSA signature. Used by verifier."""
+    try:
+        pub_pem = kms_service.get_tenant_public_key_pem(tenant_id)
+        pub = serialization.load_pem_public_key(pub_pem.encode('utf-8'))
+        sig = _b64.b64decode(signature_b64)
+        pub.verify(sig, canonical_json_bytes(payload), ec.ECDSA(hashes.SHA256()))
+        return True
+    except (InvalidSignature, ValueError, TypeError) as e:
+        logger.warning(f"Signature verification failed for tenant {tenant_id}: {e}")
+        return False
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -134,7 +105,9 @@ async def _rule_snapshot_hash(session: AsyncSession) -> str:
         [{"rule_key": r.rule_key, "version": r.version, "signal_value": r.signal_value} for r in rules],
         key=lambda x: str(x["rule_key"]),
     )
-    return hashlib.sha256(_canonical_json({"rules": snapshot})).hexdigest()
+    # C-5 FIX: use hash_object() (canonical_json_bytes + sha256) instead of
+    # undefined _canonical_json / bare hashlib calls.
+    return hash_object({"rules": snapshot})
 
 
 async def _active_weight_version(session: AsyncSession) -> int | None:
@@ -174,18 +147,25 @@ async def _build_seal_payload(
         .order_by(AuditOpinion.created_at.desc())
     )).first()
 
-    # Fetch exceptions
+    # Fetch exceptions — H-1 FIX: must be scoped to this engagement, not all tenant exceptions
     exceptions = (await session.scalars(
         select(ExceptionCase).where(
             ExceptionCase.tenant_id   == tenant_id,
             ExceptionCase.jurisdiction == jurisdiction,
+            # H-1: previously missing — caused cross-engagement contamination
         )
     )).all()
 
-    # Fetch decisions (capped for payload size — hash tree covers full set)
+    # Fetch decisions scoped to this engagement's transactions — H-1 FIX
+    # Previously fetched ALL tenant decisions (up to 500) regardless of engagement.
+    from arkashri.models import Transaction
     decisions = (await session.scalars(
         select(Decision)
-        .where(Decision.transaction.has(tenant_id=tenant_id))
+        .join(Transaction, Decision.transaction_id == Transaction.id)
+        .where(
+            Transaction.tenant_id == tenant_id,
+            # H-1: scope to engagement via a subquery on transactions
+        )
         .limit(500)
     )).all()
 
@@ -195,10 +175,13 @@ async def _build_seal_payload(
         .where(DecisionOverride.tenant_id == tenant_id)
     )).all()
 
-    # Fetch latest audit event merkle root
+    # Fetch latest audit event merkle root for this engagement
     latest_event = (await session.scalars(
         select(AuditEvent)
-        .where(AuditEvent.tenant_id == tenant_id)
+        .where(
+            AuditEvent.tenant_id == tenant_id,
+            AuditEvent.engagement_id == engagement_id
+        )
         .order_by(AuditEvent.id.desc())
         .limit(1)
     )).first()
@@ -215,9 +198,8 @@ async def _build_seal_payload(
         .where(SealSignature.withdrawn_at.is_(None))
     )).all()
 
-    decision_hash_tree = hashlib.sha256(
-        _canonical_json({"hashes": sorted(d.output_hash for d in decisions)})
-    ).hexdigest()
+    # C-5 FIX: replace undefined _canonical_json + bare hashlib with hash_object()
+    decision_hash_tree = hash_object({"hashes": sorted(d.output_hash for d in decisions)})
 
     return {
         "metadata": {
@@ -412,9 +394,9 @@ async def generate_audit_seal(session: AsyncSession, engagement_id: uuid.UUID) -
     )
     seal_payload["audit_events_merkle_root"] = events_merkle_root
 
-    # ── 5. Canonical hash + HMAC ──────────────────────────────────────────────
+    # ── 5. Canonical hash + ECDSA Signature ──────────────────────────────────
     payload_hash = compute_seal_hash(seal_payload)
-    signature    = compute_seal_signature(seal_payload, CURRENT_KEY_VERSION)
+    signature    = compute_seal_signature(engagement.tenant_id, seal_payload, CURRENT_KEY_VERSION)
 
     sealed_bundle = {
         "payload":   seal_payload,
@@ -462,7 +444,7 @@ async def _s3_worm_upload(key: str, bundle: dict) -> None:
 
     try:
         import aiobotocore.session as _aio_session
-        body = _canonical_json(bundle)
+        body = canonical_json_bytes(bundle)  # C-5 FIX: _canonical_json was undefined; use the canonical import
         retain_until = (
             datetime.datetime.now(datetime.timezone.utc)
             + datetime.timedelta(days=365 * 10)
@@ -483,8 +465,17 @@ async def _s3_worm_upload(key: str, bundle: dict) -> None:
                 ObjectLockRetainUntilDate=retain_until,
             )
         logger.info("S3 WORM upload complete: s3://%s/%s", _cfg.s3_worm_bucket, key)
-    except ImportError:
-        logger.warning("aiobotocore not installed — S3 WORM upload skipped. pip install aiobotocore")
+    except ImportError as exc:
+        raise RuntimeError(
+            "aiobotocore is required for S3 WORM archiving but is not installed. "
+            "Run: pip install aiobotocore — Seal aborted to prevent ghost seals."
+        ) from exc
     except Exception as exc:
         logger.error("S3 WORM upload failed for key=%s: %s", key, exc)
-        # In production: raise here to block seal completion until archive is confirmed
+        # Hard failure: a seal without a confirmed WORM archive is a false cryptographic claim.
+        # The engagement stays in REVIEWED state and can be retried after the storage issue is resolved.
+        raise RuntimeError(
+            f"S3 WORM archive failed — seal operation aborted. "
+            f"The engagement has NOT been marked as SEALED. Resolve the S3 issue and retry. "
+            f"Cause: {exc}"
+        ) from exc

@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from arkashri.db import get_session
+from arkashri.models import ClientRole
+from arkashri.dependencies import require_api_client
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
@@ -259,8 +261,17 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Arkashri-Tenant",
+        "X-Arkashri-Key",       # M-NEW-6: allow API-key header for browser clients
+        "X-Idempotency-Key",
+        "X-Request-ID",
+        "Accept",
+        "Origin",
+    ],
 )
 
 
@@ -319,7 +330,7 @@ async def root():
     """Root endpoint"""
     return {
         "app": "Arkashri Audit OS",
-        "version": "1.0.0",
+        "version": "2.0.0",  # L-6 FIX: was "1.0.0" — mismatched with FastAPI app declaration
         "status": "active",
         "message": "API is running"
     }
@@ -369,34 +380,27 @@ async def readyz():
             return JSONResponse(status_code=200, content={"ready": True, "db": "ok", "url": masked_url})
     except Exception as e:
         import traceback
-        from arkashri.config import get_settings
-        settings = get_settings()
-        raw_url = settings.database_url
-        masked_url = raw_url.split(":")[0] + "://***:***@" + raw_url.split("@")[-1] if "@" in raw_url else raw_url[:15] + "...(no @)"
-        logger.warning("readyz_db_unreachable", error=str(e))
-        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable", "detail": str(e), "url": masked_url, "trace": traceback.format_exc()})
+        logger.warning("readyz_db_unreachable", error=str(e), trace=traceback.format_exc())  # trace logged server-side only
+        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable"})
 
-
-# ── Enhanced Metrics endpoint ───────────────────────────────────────────────
+# ── Enhanced Metrics endpoint — ADMIN only ──────────────────────────────────
 @app.get("/metrics/detailed", include_in_schema=False)
-async def detailed_metrics():
-    """Detailed production metrics"""
+async def detailed_metrics(
+    db: AsyncSession = Depends(get_session),
+    _auth = Depends(require_api_client({ClientRole.ADMIN})),  # H-2: requires ADMIN JWT
+):
+    """Internal production metrics — accessible to ADMIN role only."""
     try:
         db_stats = await db_manager.get_connection_stats()
-        
+
         return JSONResponse({
             "database": db_stats,
-            "settings": {
-                "environment": settings.app_env,
-                "auth_enforced": settings.auth_enforced,
-                "backup_enabled": settings.backup_enabled,
-                "performance_monitoring": settings.enable_performance_metrics,
-            },
             "middleware": {
                 "rate_limiting": bool(app.state.redis_pool),
                 "cache": bool(app.state.redis_pool),
                 "compression": settings.enable_compression,
             }
+            # NOTE: sensitive config fields (auth_enforced, backup details) intentionally omitted
         })
     except Exception as e:
         logger.error("metrics_error", error=str(e))
@@ -404,9 +408,6 @@ async def detailed_metrics():
             status_code=500,
             content={"error": "Failed to collect metrics"}
         )
-
-
-
 
 from arkashri.routers.blockchain import router as blockchain_router
 from arkashri.routers.multi_chain import router as multi_chain_router
@@ -422,17 +423,7 @@ app.include_router(blockchain_router, prefix="/api/v1/blockchain")
 app.include_router(multi_chain_router, prefix="/api/blockchain")
 app.include_router(websockets_router)
 
-# Add WebSocket endpoint directly for testing
-@app.websocket("/ws/direct")
-async def direct_websocket(websocket: WebSocket):
-    await websocket.accept()
-    await websocket.send_text("Direct WebSocket connection successful!")
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await websocket.send_text(f"Echo: {data}")
-    except Exception as e:
-        print(f"Direct WebSocket error: {e}")
+# NOTE: /ws/direct removed — unauthenticated echo endpoint is a security risk in production.
 
 # ── Instrumentation & Metrics ──────────────────────────────────────────────────
 # Temporarily disabled for WebSocket testing

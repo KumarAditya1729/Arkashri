@@ -55,9 +55,12 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
         if request.method not in self.cacheable_methods:
             return await call_next(request)
 
-        # Skip cache entirely if Redis not reachable
-        if self._redis_unavailable:
-            return await call_next(request)
+        # Skip cache entirely if Redis not reachable or not initialized
+        if self._redis_unavailable or self._redis is None:
+            if not self._redis_unavailable:
+                await self._connect_redis()
+            if self._redis is None:
+                return await call_next(request)
 
         # Generate cache key
         cache_key = self._generate_cache_key(request)
@@ -126,6 +129,9 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
         if not self._redis:
             await self._connect_redis()
         
+        if not self._redis or self._redis_unavailable:
+            return None
+        
         try:
             cached_data = await self._redis.get(cache_key)
             if cached_data:
@@ -174,8 +180,8 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
     
     async def _cache_response(self, request: Request, cache_key: str, response: Response, processing_time: float):
         """Cache response data"""
-        if not self._redis:
-            await self._connect_redis()
+        if not self._redis or self._redis_unavailable:
+            return
         
         try:
             # Determine TTL based on endpoint

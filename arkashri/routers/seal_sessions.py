@@ -38,10 +38,11 @@ from arkashri.models import (
 )
 from arkashri.dependencies import require_api_client, AuthContext, limiter
 from arkashri.services.audit_log import log_system_event
+from arkashri import SYSTEM_VERSION  # L-10: single source of truth
 
 router = APIRouter()
 
-SYSTEM_VERSION = "Arkashri_OS_2.0_Enterprise"
+# SYSTEM_VERSION imported from arkashri package — do not redefine locally.
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -354,16 +355,21 @@ async def sign_seal_session(
     if seal_sess.status == SealSessionStatus.WITHDRAWN:
         raise HTTPException(409, "SealSession has been withdrawn. Create a new one.")
 
-    # Prevent duplicate signature from same partner
+    # H-9: Bind partner identity to the authenticated caller, not caller-supplied strings.
+    # This prevents a user from signing as an arbitrary partner_user_id / partner_email.
+    authenticated_user_id = str(getattr(auth, "client_id", "") or getattr(auth, "user_id", "") or payload.partner_user_id)
+    authenticated_email   = str(getattr(auth, "email", "") or getattr(auth, "client_name", "") or payload.partner_email)
+
+    # Prevent duplicate signature from same partner (use authenticated identity)
     dup = (await db.scalars(
         select(SealSignature).where(
             SealSignature.seal_session_id == session_id,
-            SealSignature.partner_user_id == payload.partner_user_id,
+            SealSignature.partner_user_id == authenticated_user_id,
             SealSignature.withdrawn_at.is_(None),
         )
     )).first()
     if dup:
-        raise HTTPException(409, f"Partner {payload.partner_user_id} has already signed this session.")
+        raise HTTPException(409, f"You ({authenticated_user_id}) have already signed this session.")
 
     # Enforce override acknowledgement for sessions with known overrides
     eng = (await db.scalars(select(Engagement).where(Engagement.id == seal_sess.engagement_id))).first()
@@ -388,12 +394,12 @@ async def sign_seal_session(
             raise HTTPException(422, "Invalid ICAI Registration Number format. Must be FCA/ACA-XXXXXX or F/A-XXXXXX.")
 
     now = datetime.datetime.now(datetime.UTC)
-    sig_hash = _compute_signature_hash(session_id, payload.partner_user_id, now)
+    sig_hash = _compute_signature_hash(session_id, authenticated_user_id, now)
 
     sig = SealSignature(
         seal_session_id=session_id,
-        partner_user_id=payload.partner_user_id,
-        partner_email=payload.partner_email,
+        partner_user_id=authenticated_user_id,    # H-9: from auth, not caller payload
+        partner_email=authenticated_email,         # H-9: from auth, not caller payload
         role=payload.role,
         jurisdiction=payload.jurisdiction,
         override_count_acknowledged=override_count,
@@ -425,7 +431,7 @@ async def sign_seal_session(
     await log_system_event(
         db,
         tenant_id=auth.tenant_id,
-        user_email=payload.partner_email,
+        user_email=authenticated_email,
         action="PARTNER_SIGNED",
         resource_type="SEAL_SESSION",
         resource_id=str(session_id),
@@ -600,6 +606,7 @@ def _to_sig_out(s: SealSignature) -> SealSignatureOut:
         signature_hash=s.signature_hash,
         signed_at=s.signed_at.isoformat(),
         withdrawn_at=s.withdrawn_at.isoformat() if s.withdrawn_at else None,
+        ca_icai_reg_no=s.ca_icai_reg_no,   # M-10: was silently dropped before
     )
 
 

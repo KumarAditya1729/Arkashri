@@ -8,12 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from arkashri.models import AuditEvent
 from arkashri.services.hash_chain import ZERO_HASH, compute_event_hash
+import uuid
 
 
 async def append_audit_event(
     session: AsyncSession,
     *,
     tenant_id: str,
+    engagement_id: uuid.UUID | None = None,
     jurisdiction: str,
     event_type: str,
     entity_type: str,
@@ -24,13 +26,19 @@ async def append_audit_event(
 ) -> AuditEvent:
     last_event = await session.scalar(
         select(AuditEvent)
-        .where(AuditEvent.tenant_id == tenant_id, AuditEvent.jurisdiction == jurisdiction)
+        .where(
+            AuditEvent.tenant_id == tenant_id,
+            AuditEvent.jurisdiction == jurisdiction,
+            AuditEvent.engagement_id == engagement_id
+        )
         .order_by(AuditEvent.id.desc())
         .limit(1)
+        .with_for_update()  # C-8 FIX: serializes concurrent appends — prevents hash-chain forks
     )
     prev_hash = last_event.event_hash if last_event else ZERO_HASH
     chain_payload = {
         "tenant_id": tenant_id,
+        "engagement_id": str(engagement_id) if engagement_id else None,
         "jurisdiction": jurisdiction,
         "event_type": event_type,
         "entity_type": entity_type,
@@ -41,6 +49,7 @@ async def append_audit_event(
 
     event = AuditEvent(
         tenant_id=tenant_id,
+        engagement_id=engagement_id,
         jurisdiction=jurisdiction,
         event_type=event_type,
         entity_type=entity_type,
@@ -56,11 +65,20 @@ async def append_audit_event(
     return event
 
 
-async def verify_audit_chain(session: AsyncSession, tenant_id: str, jurisdiction: str) -> tuple[bool, list[str], int]:
+async def verify_audit_chain(
+    session: AsyncSession,
+    tenant_id: str,
+    jurisdiction: str,
+    engagement_id: uuid.UUID | None = None
+) -> tuple[bool, list[str], int]:
     events = list(
         await session.scalars(
             select(AuditEvent)
-            .where(AuditEvent.tenant_id == tenant_id, AuditEvent.jurisdiction == jurisdiction)
+            .where(
+                AuditEvent.tenant_id == tenant_id,
+                AuditEvent.jurisdiction == jurisdiction,
+                AuditEvent.engagement_id == engagement_id
+            )
             .order_by(AuditEvent.id.asc())
         )
     )
@@ -71,6 +89,7 @@ async def verify_audit_chain(session: AsyncSession, tenant_id: str, jurisdiction
     for event in events:
         chain_payload = {
             "tenant_id": event.tenant_id,
+            "engagement_id": str(event.engagement_id) if event.engagement_id else None,
             "jurisdiction": event.jurisdiction,
             "event_type": event.event_type,
             "entity_type": event.entity_type,

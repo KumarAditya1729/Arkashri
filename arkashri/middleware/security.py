@@ -33,13 +33,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         # Content Security Policy
+        # H-4 FIX: Removed 'unsafe-inline' and 'unsafe-eval' — they completely defeat
+        # XSS protection from CSP. If inline scripts are needed, migrate to nonces:
+        # generate a random nonce per request and pass it to templates.
         csp = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "script-src 'self'; "
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: https:; "
             "font-src 'self'; "
-            "connect-src 'self'; "
+            "connect-src 'self' wss:; "
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
             "form-action 'self';"
@@ -83,17 +86,16 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
             r'eval\s*\(',  # Code execution
         ]
         
-        # Blocked IP ranges (private networks, etc.)
+        # C-7 FIX: Removed private/internal IP ranges (10.x, 172.x, 192.168.x, 127.x).
+        # Those ranges are used by Railway internal networking, Docker bridge, Kubernetes
+        # pod CIDR, and localhost — blocking them caused all health checks to return 403
+        # and made the service permanently unready.
+        # Only block truly external-but-reserved ranges that should never originate
+        # legitimate client traffic.
         self.blocked_ip_ranges = [
-            ipaddress.IPv4Network('0.0.0.0/8'),      # RFC 1700
-            ipaddress.IPv4Network('10.0.0.0/8'),     # Private
-            ipaddress.IPv4Network('100.64.0.0/10'),   # Carrier-grade NAT
-            ipaddress.IPv4Network('127.0.0.0/8'),     # Loopback
-            ipaddress.IPv4Network('169.254.0.0/16'),  # Link-local
-            ipaddress.IPv4Network('172.16.0.0/12'),  # Private
-            ipaddress.IPv4Network('192.0.0.0/24'),   # IETF protocol assignments
-            ipaddress.IPv4Network('192.168.0.0/16'), # Private
-            ipaddress.IPv4Network('198.18.0.0/15'),  # Network benchmark tests
+            ipaddress.IPv4Network('0.0.0.0/8'),      # RFC 1700 — this host
+            ipaddress.IPv4Network('100.64.0.0/10'),  # Carrier-grade NAT (RFC 6598)
+            ipaddress.IPv4Network('169.254.0.0/16'), # Link-local (RFC 3927)
             ipaddress.IPv4Network('224.0.0.0/4'),    # Multicast
             ipaddress.IPv4Network('240.0.0.0/4'),    # Reserved
         ]

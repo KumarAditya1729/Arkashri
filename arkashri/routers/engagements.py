@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +32,11 @@ from arkashri.services.engagement_workflow import (
 )
 from arkashri.dependencies import require_api_client, AuthContext
 
+
+class EngagementStatusUpdate(BaseModel):
+    """Request body for workflow transition endpoint."""
+    status: EngagementStatus
+
 router = APIRouter()
 
 @router.post("/engagements", response_model=EngagementOut, status_code=status.HTTP_201_CREATED)
@@ -51,8 +57,12 @@ async def list_engagements(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.READ_ONLY, ClientRole.REVIEWER})),
 ) -> list[EngagementOut]:
-    """List all engagements ordered by most recent first."""
-    results = list(await session.scalars(select(Engagement).order_by(Engagement.created_at.desc())))
+    """List all engagements for the authenticated tenant, ordered by most recent first."""
+    results = list(await session.scalars(
+        select(Engagement)
+        .where(Engagement.tenant_id == _auth.tenant_id)  # H-4: tenant isolation
+        .order_by(Engagement.created_at.desc())
+    ))
     return [EngagementOut.model_validate(e) for e in results]
 
 
@@ -258,7 +268,9 @@ async def transition_engagement_endpoint(
         )
 
         return EngagementOut.model_validate(engagement)
-    except (ValueError, WorkflowViolation) as e:
+    except WorkflowViolation as e:
+        # 400: caller violated workflow rules (wrong transition, gate not met)
         raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
+        # 404: engagement not found
         raise HTTPException(status_code=404, detail=str(e))

@@ -63,47 +63,52 @@ class DatabaseHealthChecker:
                 # Simple health check query
                 await session.execute(text("SELECT 1 as health_check"))
                 await session.commit()
-                
-                # Log successful health check
+
                 self._is_healthy = True
-                self._last_check = asyncio.get_event_loop().time()
-                
+                self._last_check = asyncio.get_running_loop().time()  # deprecated get_event_loop() fix
+
                 self.logger.info(
                     "database_health_check_success",
                     timestamp=self._last_check
                 )
                 return True
-                
+
         except Exception as e:
             self._is_healthy = False
+            self._last_check = asyncio.get_running_loop().time()  # deprecated get_event_loop() fix
             self.logger.error(
                 "database_health_check_failed",
                 error=str(e),
-                timestamp=asyncio.get_event_loop().time()
+                timestamp=self._last_check
             )
             return False
-        return False
+        # Removed unreachable `return False` (dead code after explicit returns in both branches)
     
     def is_healthy(self) -> bool:
         """Check if database is currently healthy"""
         last = self._last_check
         if last is None:
             return False
-        
-        current_time = asyncio.get_event_loop().time()
+
+        try:
+            current_time = asyncio.get_running_loop().time()  # deprecated get_event_loop() fix
+        except RuntimeError:
+            # No running loop (called from sync context) — use monotonic as fallback
+            import time
+            current_time = time.monotonic()
         time_since_check = current_time - last
-        
         return self._is_healthy and time_since_check < self._check_interval
     
     async def wait_for_healthy(self, timeout: int = 30) -> bool:
         """Wait for database to become healthy"""
-        start_time = asyncio.get_event_loop().time()
-        
-        while (asyncio.get_event_loop().time() - start_time) < timeout:
+        loop = asyncio.get_running_loop()  # deprecated get_event_loop() fix
+        start_time = loop.time()
+
+        while (loop.time() - start_time) < timeout:
             if await self.check_health():
                 return True
             await asyncio.sleep(1)
-        
+
         return False
 
 
@@ -197,7 +202,12 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Enhanced session dependency with health checking"""
     # Ensure database is healthy before providing session
     if not db_manager.health_checker.is_healthy():
-        await db_manager.health_checker.check_health()
+        # H-NEW-6: Only re-check health if at least 5 seconds passed since last failure
+        # to prevent health-check-storming the DB.
+        now = asyncio.get_event_loop().time()
+        last = db_manager.health_checker._last_check or 0
+        if now - last > 5.0:
+            await db_manager.health_checker.check_health()
         
         if not db_manager.health_checker.is_healthy():
             raise DatabaseException("Database is not healthy")

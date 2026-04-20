@@ -5,6 +5,7 @@ __pycache__/
 # Python virtual environments — all common names used in this repo
 .venv/
 .venv2/
+.venv-test/
 .venv_health/
 venv/
 
@@ -22,6 +23,12 @@ venv/
 # ── Logs ──────────────────────────────────────────────────────────────────────
 logs/
 *.log
+server.log
+
+# ── Scratch / ad-hoc test scripts (project-root test_*.py are not committed) ──
+# Real tests live under tests/ only.
+test_*.py
+!tests/
 
 # ── Uploads (user-submitted files) ────────────────────────────────────────────
 uploads/

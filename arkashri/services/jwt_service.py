@@ -242,14 +242,14 @@ def decode_ws_ticket(token: str) -> dict:
     return payload
 
 
-def decode_oidc_token(token: str, jwks_uri: str, audience: str) -> dict:
+async def decode_oidc_token(token: str, jwks_uri: str, audience: str) -> dict:
     """
     Decode a token issued by an external OIDC provider (e.g. Google, Okta).
     Uses the provider's JWKS public keys — no shared secret needed.
     Enforces: exp, iss (from metadata), aud (your client_id), algorithms from JWKS.
 
     Usage:
-        payload = decode_oidc_token(
+        payload = await decode_oidc_token(
             token=request.headers["authorization"].split()[1],
             jwks_uri=settings.oauth_jwks_uri,
             audience=settings.oauth_client_id,
@@ -258,9 +258,26 @@ def decode_oidc_token(token: str, jwks_uri: str, audience: str) -> dict:
     import httpx  # lazy import — only used on OIDC path
     from jose import jwk as jose_jwk
 
+    # H-5: Explicit algorithm allowlist — NEVER trust the header's alg claim directly.
+    # An attacker can set alg=HS256 and sign with the public key as an HMAC secret.
+    _OIDC_ALLOWED_ALGORITHMS = {"RS256", "RS384", "RS512", "ES256", "ES384", "ES512"}
+
     try:
-        jwks = httpx.get(jwks_uri, timeout=5.0).json()
+        # C-9 FIX: use async HTTP — synchronous httpx.get() blocks the entire event loop.
+        async with httpx.AsyncClient(timeout=5.0) as _http:
+            _resp = await _http.get(jwks_uri)
+            _resp.raise_for_status()
+            jwks = _resp.json()
         header = jwt.get_unverified_header(token)
+
+        # Validate algorithm before using it
+        token_alg = header.get("alg", "")
+        if token_alg not in _OIDC_ALLOWED_ALGORITHMS:
+            raise HTTPException(
+                401,
+                f"OIDC token uses disallowed algorithm '{token_alg}'. "
+                f"Accepted: {sorted(_OIDC_ALLOWED_ALGORITHMS)}"
+            )
 
         # Find matching key by kid
         key = next(
@@ -274,7 +291,7 @@ def decode_oidc_token(token: str, jwks_uri: str, audience: str) -> dict:
         payload = jwt.decode(
             token,
             public_key,
-            algorithms=[header.get("alg", "RS256")],
+            algorithms=[token_alg],   # safe: already validated against allowlist above
             audience=audience,
             options={**_DECODE_OPTIONS, "verify_iss": False},  # iss varies per IdP
         )

@@ -21,12 +21,16 @@ class WorkflowViolation(Exception):
     pass
 
 ALLOWED_TRANSITIONS = {
-    EngagementStatus.PLANNING: [EngagementStatus.COLLECTED, EngagementStatus.FLAGGED],
+    # ACCEPTED is the initial writable state after engagement creation.
+    # PENDING = not yet accepted. REJECTED = terminal. SEALED = terminal.
+    EngagementStatus.ACCEPTED:  [EngagementStatus.COLLECTED, EngagementStatus.FLAGGED, EngagementStatus.REJECTED],
     EngagementStatus.COLLECTED: [EngagementStatus.VERIFIED, EngagementStatus.FLAGGED],
-    EngagementStatus.VERIFIED: [EngagementStatus.REVIEWED, EngagementStatus.FLAGGED],
-    EngagementStatus.FLAGGED: [EngagementStatus.COLLECTED, EngagementStatus.VERIFIED],
-    EngagementStatus.REVIEWED: [EngagementStatus.SEALED],  # SEALED should ONLY be reached via seal service logic
-    EngagementStatus.SEALED: [], # Immutable sink state
+    EngagementStatus.VERIFIED:  [EngagementStatus.REVIEWED, EngagementStatus.FLAGGED],
+    EngagementStatus.FLAGGED:   [EngagementStatus.COLLECTED, EngagementStatus.VERIFIED],
+    EngagementStatus.REVIEWED:  [],   # SEALED is only reachable via seal service (generate_audit_seal)
+    EngagementStatus.SEALED:    [],   # Immutable terminal state
+    EngagementStatus.REJECTED:  [],   # Terminal state
+    EngagementStatus.PENDING:   [EngagementStatus.ACCEPTED, EngagementStatus.REJECTED],
 }
 
 async def transition_engagement(
@@ -100,18 +104,33 @@ async def transition_engagement(
 
 
 async def _verify_collected_readiness(session: AsyncSession, engagement: Engagement):
-    """Requires at least one ERP sync and at least one evidence document."""
+    """Requires at least one ERP sync for this engagement's tenant connection and at least one evidence document."""
+    # C-8: Must be scoped to ERPConnections belonging to this specific engagement's tenant.
+    # Previously queried all ERPSyncLogs for the tenant, allowing other engagements' syncs
+    # to satisfy this gate. Now checks: is there a SUCCESSFUL/PARTIAL sync log for any
+    # active connection under this tenant that was completed after the engagement was created?
+    from arkashri.models import ERPConnection, ERPSyncStatus
     has_sync = (await session.scalar(
-        select(func.count(ERPSyncLog.id)).where(ERPSyncLog.tenant_id == engagement.tenant_id)
+        select(func.count(ERPSyncLog.id))
+        .join(ERPConnection, ERPSyncLog.connection_id == ERPConnection.id)
+        .where(
+            ERPConnection.tenant_id == engagement.tenant_id,
+            ERPSyncLog.tenant_id == engagement.tenant_id,
+            ERPSyncLog.status.in_([ERPSyncStatus.SUCCESS, ERPSyncStatus.PARTIAL]),
+            ERPSyncLog.started_at >= engagement.created_at,  # sync must have happened after engagement creation
+        )
     )) > 0
-    
+
     if not has_sync:
-        raise WorkflowViolation("Cannot transition to COLLECTED: No ERP synchronization logs found.")
-        
+        raise WorkflowViolation(
+            "Cannot transition to COLLECTED: No successful ERP synchronization found after engagement creation. "
+            "Run an ERP sync via POST /erp/connections/{id}/sync before transitioning."
+        )
+
     has_evidence = (await session.scalar(
         select(func.count(EvidenceRecord.id)).where(EvidenceRecord.engagement_id == engagement.id)
     )) > 0
-    
+
     if not has_evidence:
         raise WorkflowViolation("Cannot transition to COLLECTED: At least one evidence document is required.")
 
