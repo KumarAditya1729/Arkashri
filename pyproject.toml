@@ -36,7 +36,7 @@ dependencies = [
   "openai>=1.14.0",
   "circuitbreaker>=2.1.3",
   # ── Enhanced production dependencies ─────────────────────────────────────
-  "python-json-logger>=2.0.7",     # Structured JSON logging
+  "python-json-logger>=2.0.7,<4.0", # Structured JSON logging (v4 broke pythonjsonlogger.jsonlogger API)
   "tenacity>=8.2.3",               # Retry mechanisms
   "ujson>=5.8.0",                  # Fast JSON parsing
   "aiosmtplib>=1.3.1",             # Async SMTP client
@@ -53,6 +53,7 @@ dependencies = [
   "substrate-interface>=1.7.10",      # Polkadot blockchain
   "joblib>=1.3.0",                  # Model persistence
   "filetype>=1.2.0",               # File type detection for evidence uploads
+  "Jinja2>=3.0.0",                  # HTML template rendering for PDF reports
 ]
 
 [project.optional-dependencies]
