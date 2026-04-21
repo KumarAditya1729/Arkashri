@@ -52,6 +52,7 @@ dependencies = [
   "web3>=6.0.0",                    # Ethereum/Polygon blockchain
   "substrate-interface>=1.7.10",      # Polkadot blockchain
   "joblib>=1.3.0",                  # Model persistence
+  "filetype>=1.2.0",               # File type detection for evidence uploads
 ]
 
 [project.optional-dependencies]
