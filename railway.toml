@@ -1,39 +1,18 @@
-# railway.toml — Arkashri monorepo deployment config
+# railway.toml - Arkashri monorepo deployment config
 # Two services share the same Docker image but run different processes.
-# Deploy this repo twice on Railway (or use Railway's monorepo service support):
-#   Service 1: API    → uses the [deploy] block below
-#   Service 2: Worker → override startCommand to: python -m arq arkashri.worker.WorkerSettings
 
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# ── API Service ───────────────────────────────────────────────────────────────
+# API Service
 # Runs the FastAPI app via Gunicorn + UvicornWorker.
-# Workers=1 keeps RAM usage low on Railway's free/hobby tier.
-# Bump to 2-4 once you upgrade the plan.
 
-# Run migrations before starting the application server
 preDeployCommand = "alembic upgrade head"
-startCommand = "gunicorn arkashri.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 300 --keep-alive 2 --access-logfile - --error-logfile -"
+startCommand = "sh -c 'exec gunicorn arkashri.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 300 --keep-alive 2 --access-logfile - --error-logfile -'"
 
 healthcheckPath = "/readyz"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
-
-# ── Environment variables required on BOTH services ──────────────────────────
-# Set these in Railway → Variables for each service:
-#
-#   DATABASE_URL      = postgresql://... (from Railway Postgres or Neon)
-#   REDIS_URL         = redis://...      (from Railway Redis)
-#   JWT_SECRET_KEY    = <random 64-char hex>
-#   SESSION_SECRET_KEY= <random 64-char hex>
-#   SEAL_KEY_V1       = <base64 32-byte key>
-#   OPENAI_API_KEY    = <groq or openai key>
-#   APP_ENV           = production
-#   AUTH_ENFORCED     = true
-#
-# ── Worker Service startCommand (set this in Railway UI for service 2) ────────
-#   python -m arq arkashri.worker.WorkerSettings
