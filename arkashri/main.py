@@ -99,12 +99,18 @@ if _TRACING_ENABLED:
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── FIX (B): Always run DB health check on startup, regardless of Redis ──
-    # Previously this only ran inside the Redis-success branch, causing every
-    # API request to fail the is_healthy() gate on cold starts with dead Redis.
+    # ── DB health check on startup — non-blocking with 5s timeout ─────────────
+    # Capped at 5 seconds so a slow/unreachable DB never stalls the lifespan
+    # yield. Routes (including /readyz) become available immediately after this
+    # block regardless of DB state. /health will report the real DB status.
     logger.info("startup_db_health_check_begin")
-    await db_manager.health_checker.check_health()
-    logger.info("startup_db_health_check_complete")
+    try:
+        await asyncio.wait_for(db_manager.health_checker.check_health(), timeout=5.0)
+        logger.info("startup_db_health_check_complete")
+    except asyncio.TimeoutError:
+        logger.warning("startup_db_health_check_timeout", timeout_seconds=5)
+    except Exception as e:
+        logger.warning("startup_db_health_check_error", error=str(e))
 
     # Parse REDIS_URL: redis://host:port/db  →  host + port
     redis_url = settings.redis_url  # e.g. redis://default:pass@redis:6379/0
