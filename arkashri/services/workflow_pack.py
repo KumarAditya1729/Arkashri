@@ -14,10 +14,14 @@ log = logging.getLogger(__name__)
 # This ensures correctness whether running in Docker, dev, or site-packages.
 _CANDIDATES = [
     Path("/app/workflow_pack"),                        # Docker: always the canonical path
-    Path(__file__).resolve().parents[2] / "workflow_pack",  # Dev-install: repo root
-    Path(__file__).resolve().parents[5] / "workflow_pack",  # pip install: site-packages depth
     Path(os.environ.get("APP_ROOT", "/app")) / "workflow_pack",  # env override
 ]
+
+_base_path = Path(__file__).resolve()
+if len(_base_path.parents) > 2:
+    _CANDIDATES.append(_base_path.parents[2] / "workflow_pack")
+if len(_base_path.parents) > 5:
+    _CANDIDATES.append(_base_path.parents[5] / "workflow_pack")
 
 _resolved = next((p for p in _CANDIDATES if (p / "index.json").exists()), None)
 if _resolved is None:
