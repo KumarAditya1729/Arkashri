@@ -63,7 +63,7 @@ Copy variables from `railway_env_template.txt` to Railway:
 ```
 DATABASE_URL=postgresql://... (provided by Railway)
 REDIS_URL=redis://... (provided by Railway)
-JWT_SECRET_KEY=3f9b362d5c659c30ecd8a6d57a6a1083b7f0cf8e2154843d3f71f18ff4b216d8
+JWT_SECRET_KEY=<REPLACE_WITH_SECURE_32_CHAR_HEX_STRING>
 OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 AWS_ACCESS_KEY_ID=AKIAXXXXXXXXXXXXXXXXXXXX
 AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

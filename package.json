@@ -12,6 +12,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@polkadot/api": "^12.0.0",
     "@polkadot/util": "^13.0.0",
+    "@railway/cli": "^4.40.0",
     "@tanstack/react-query": "^5.90.21",
     "chart.js": "^4.4.0",
     "class-variance-authority": "^0.7.1",
@@ -38,6 +39,7 @@
     "react-window": "^1.8.8",
     "recharts": "^3.7.0",
     "tailwind-merge": "^3.5.0",
+    "vercel": "^51.8.0",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
