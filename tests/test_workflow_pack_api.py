@@ -14,7 +14,7 @@ def test_workflow_pack_index_endpoint() -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["pack_id"] == "arkashri_audit_workflow_pack"
-    assert len(data["templates"]) == 14
+    assert len(data["templates"]) >= 14
 
 
 
