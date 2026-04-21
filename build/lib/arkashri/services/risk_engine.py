@@ -34,11 +34,12 @@ class RiskComputationResult:
     model_versions: list[dict[str, Any]]
     components: list[ComputedComponent]
     confidence_breakdown: dict[str, float]
+    trace_log: list[str]
 
     def components_as_dicts(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         for item in self.components:
-            serialized = asdict(item)
+            serialized = asdict(item)  # type: ignore
             serialized["signal_type"] = item.signal_type.value
             result.append(serialized)
         return result
@@ -58,11 +59,20 @@ def get_nested(payload: dict[str, Any], dotted_key: str) -> Any:
 
 
 def evaluate_expression(payload: dict[str, Any], expression: dict[str, Any]) -> bool:
+    # ── Compound operators ────────────────────────────────────────────────────
+    # Support both "all"/"any" (original) and "and"/"or" aliases
     if "all" in expression:
         return all(evaluate_expression(payload, item) for item in expression["all"])
     if "any" in expression:
         return any(evaluate_expression(payload, item) for item in expression["any"])
+    if "and" in expression:
+        return all(evaluate_expression(payload, item) for item in expression["and"])
+    if "or" in expression:
+        return any(evaluate_expression(payload, item) for item in expression["or"])
+    if "not" in expression:
+        return not evaluate_expression(payload, expression["not"])
 
+    # ── Leaf expression ───────────────────────────────────────────────────────
     field = expression.get("field")
     op = expression.get("op")
     expected = expression.get("value")
@@ -85,7 +95,7 @@ def evaluate_expression(payload: dict[str, Any], expression: dict[str, Any]) -> 
     if op == "not_in":
         return actual not in expected if isinstance(expected, list) else False
     if op == "contains":
-        return isinstance(actual, (list, str)) and expected in actual
+        return isinstance(actual, (list, str)) and expected is not None and expected in actual
     if op == "exists":
         return actual is not None
 
@@ -122,6 +132,7 @@ async def _active_formula(session: AsyncSession, version: int | None = None) -> 
     formula = await session.scalar(stmt.limit(1))
     if formula is None:
         raise ValueError("No formula version available")
+    assert formula is not None
 
     # Cache for next request
     formula_dict = {
@@ -156,6 +167,7 @@ async def _active_weight_set(session: AsyncSession, version: int | None = None) 
     weight_set = await session.scalar(stmt.limit(1))
     if weight_set is None:
         raise ValueError("No weight set version available")
+    assert weight_set is not None
 
     ws_dict = {
         "version": weight_set.version,
@@ -177,8 +189,10 @@ async def _rules_from_snapshot(session: AsyncSession, rule_snapshot: list[dict[s
     if not rule_snapshot:
         cache_key = "rules:active:latest"
         cached = await cache_get(cache_key)
-        if cached:
-            return [RuleRegistry(**r) for r in cached]
+        if cached and isinstance(cached, dict):
+            cached_rules = cached.get("rules", [])
+            if isinstance(cached_rules, list):
+                return [RuleRegistry(**r) for r in cached_rules if isinstance(r, dict)]
 
         result = await session.scalars(select(RuleRegistry).where(RuleRegistry.is_active.is_(True)))
         rules = list(result)
@@ -194,17 +208,17 @@ async def _rules_from_snapshot(session: AsyncSession, rule_snapshot: list[dict[s
                 "is_active": r.is_active
             } for r in rules
         ]
-        await cache_set(cache_key, rules_data, ttl=3600)
+        await cache_set(cache_key, {"rules": rules_data}, ttl=3600)
         return rules
 
-    rules: list[RuleRegistry] = []
+    matched_rules: list[RuleRegistry] = []
     for item in rule_snapshot:
         rk = item["rule_key"]
         rv = item["version"]
         r_key = f"rule:{rk}:v:{rv}"
         cached = await cache_get(r_key)
-        if cached:
-            rules.append(RuleRegistry(**cached))
+        if cached and isinstance(cached, dict):
+            matched_rules.append(RuleRegistry(**cached))
             continue
 
         rule = await session.scalar(
@@ -215,7 +229,7 @@ async def _rules_from_snapshot(session: AsyncSession, rule_snapshot: list[dict[s
         if rule is None:
             raise ValueError(f"Missing rule for replay: {rk}@{rv}")
         
-        rules.append(rule)
+        matched_rules.append(rule)
         await cache_set(r_key, {
             "rule_key": rule.rule_key,
             "version": rule.version,
@@ -226,7 +240,7 @@ async def _rules_from_snapshot(session: AsyncSession, rule_snapshot: list[dict[s
             "is_active": rule.is_active
         }, ttl=86400) # cache deterministic replay artifacts for 24h
 
-    return rules
+    return matched_rules
 
 
 def validate_weight_policy(weight_set: WeightSet, component_caps: dict[str, float]) -> None:
@@ -287,6 +301,7 @@ async def compute_risk(
         field_collector: set[str] = set()
 
         snapshot: list[dict[str, Any]] = []
+        trace_log: list[str] = []
         
         with tracer.start_as_current_span("evaluate_deterministic_rules") as det_span:
             det_span.set_attribute("rules.count", len(rules))
@@ -311,6 +326,7 @@ async def compute_risk(
 
                 if matched:
                     min_risk_floor = max(min_risk_floor, rule.severity_floor)
+                    trace_log.append(f"Rule '{rule.name}' matched ({rule.rule_key}): Contributing {contribution:.2f} to risk.")
 
                 snapshot.append({"rule_key": rule.rule_key, "version": rule.version, "matched": matched})
 
@@ -335,6 +351,9 @@ async def compute_risk(
                         contribution=contribution,
                     )
                 )
+
+                if normalized > 0:
+                    trace_log.append(f"ML Signal '{key}' detected: Normalized value {normalized:.4f} contributing {contribution:.2f} to risk.")
 
                 if signal.get("model_key") and signal.get("model_version") is not None:
                     model_key = str(signal["model_key"])
@@ -390,23 +409,24 @@ async def compute_risk(
             confidence = clamp(q_data * q_coverage * q_stability, 0.0, 1.0)
 
             confidence_breakdown = {
-                "q_data": round(q_data, 6),
-                "q_coverage": round(q_coverage, 6),
-                "q_stability": round(q_stability, 6),
-                "overall": round(confidence, 6),
+                "q_data": float(f"{q_data:.6f}"),
+                "q_coverage": float(f"{q_coverage:.6f}"),
+                "q_stability": float(f"{q_stability:.6f}"),
+                "overall": float(f"{confidence:.6f}"),
             }
             
             span.set_attribute("result.final_risk", float(final_risk))
             span.set_attribute("result.confidence", float(confidence))
 
         return RiskComputationResult(
-            final_risk=round(final_risk, 6),
+            final_risk=float(f"{final_risk:.6f}"),
             formula_version=formula.version,
             weight_set_version=weight_set.version,
             rule_snapshot=snapshot,
             model_versions=sorted(model_versions.values(), key=lambda item: (item["model_key"], item["version"])),
             components=components,
             confidence_breakdown=confidence_breakdown,
+            trace_log=trace_log,
         )
 
 

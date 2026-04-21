@@ -8,37 +8,26 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Form
+import structlog
+import filetype
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, String, ForeignKey, select, Uuid
-from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-from arkashri.db import Base, get_session
-from arkashri.models import ClientRole, Engagement
+from arkashri.db import get_session
+from arkashri.models import ClientRole, Engagement, EvidenceRecord
 from arkashri.dependencies import require_api_client, AuthContext
 from arkashri.services.evidence import evidence_service
 from arkashri.config import get_settings
 
 router = APIRouter()
+logger = structlog.get_logger(__name__)
 
-# ─── Model ───────────────────────────────────────────────────────────────────
 
-class EvidenceRecord(Base):
-    __tablename__ = "evidence_records"
+# ─── Model Moved to models.py ────────────────────────────────────────────────
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    engagement_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("engagement.id", ondelete="CASCADE"), nullable=False, index=True)
-    tenant_id     = Column(String, nullable=False, index=True)
-    evd_ref       = Column(String, nullable=False)           # EVD-001 etc
-    file_name     = Column(String, nullable=False)
-    file_path     = Column(String, nullable=False)
-    file_size_kb  = Column(String, nullable=True)
-    evidence_type = Column(String, nullable=False, default="Document")   # Document/Screenshot/etc
-    test_ref      = Column(String, nullable=True)
-    uploaded_by   = Column(String, nullable=False, default="System")
-    ev_status     = Column(String, nullable=False, default="Pending Review")
-    uploaded_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+# ─── Schemas ─────────────────────────────────────────────────────────────────
 
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -58,6 +47,10 @@ class EvidenceOut(BaseModel):
     uploaded_at:   datetime
 
 
+class LinkTransactionsRequest(BaseModel):
+    transaction_ids: list[uuid.UUID]
+
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.get("/engagements/{engagement_id}/evidence", response_model=list[EvidenceOut])
@@ -66,7 +59,11 @@ async def list_evidence(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> list[EvidenceRecord]:
-    stmt = select(EvidenceRecord).where(EvidenceRecord.engagement_id == engagement_id).order_by(EvidenceRecord.uploaded_at.desc())
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    stmt = select(EvidenceRecord).where(EvidenceRecord.engagement_id == eid).order_by(EvidenceRecord.uploaded_at.desc())
     return list(await session.scalars(stmt))
 
 
@@ -74,41 +71,88 @@ async def list_evidence(
 async def upload_evidence(
     engagement_id: str,
     file: UploadFile = File(...),
-    test_ref: str | None = None,
+    test_ref: str | None = Form(None),
+    transaction_ids: str | None = Form(None), # Comma-separated UUIDs
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> EvidenceRecord:
-    engagement = await session.get(Engagement, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await session.get(Engagement, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
 
+    # M-9 FIX: sealed engagements are WORM — no mutations allowed
+    from arkashri.models import EngagementStatus
+    if engagement.status == EngagementStatus.SEALED:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot upload evidence to a sealed engagement. The audit bundle is WORM-locked."
+        )
+
     # Validate file type and size
     settings = get_settings()
-    allowed_types = settings.allowed_file_types.split(',')
-    file_ext = f".{(file.filename or '').split('.')[-1].lower()}" if file.filename and '.' in file.filename else ""
+    allowed_types = {item.strip() for item in settings.allowed_file_types.split(",") if item.strip()}
+
+    # H-NEW-8: Sanitize and validate file type server-side (DO NOT trust client Content-Type)
+    # Read first 2KB for sniffing
+    head = await file.read(2048)
+    await file.seek(0)
     
-    # Check file extension
-    if not any(file_ext == ext.strip() for ext in allowed_types):
-        raise HTTPException(
-            status_code=400, 
-            detail=f"File type {file_ext} not allowed. Allowed types: {', '.join(allowed_types)}"
+    kind = filetype.guess(head)
+    if kind is None:
+        # Fallback for plain text if binary sniff fails
+        try:
+            head.decode('utf-8')
+            detected_mime = "text/plain"
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=415, 
+                detail="Unsupported or malicious file type detected. Please upload valid audit evidence (PDF, Excel, Images, CSV, Text)."
+            )
+    else:
+        detected_mime = kind.mime
+
+    if detected_mime not in allowed_types:
+        logger.warning(
+            "BLOCKED_UPLOAD_MIME",
+            detected=detected_mime,
+            allowed=allowed_types,
+            user=auth.client_name,  # C-4 FIX: was `current_user.email` (undefined)
         )
-    
-    # Check file size
-    if file.size and file.size > settings.max_file_size:
+        raise HTTPException(
+            status_code=415,
+            detail=f"File content type '{detected_mime}' is not permitted. Allowed types: {', '.join(sorted(allowed_types))}"
+        )
+
+    file_bytes = await file.read()
+    if len(file_bytes) > settings.max_file_size:
         raise HTTPException(
             status_code=400,
-            detail=f"File size {file.size} bytes exceeds maximum allowed size of {settings.max_file_size} bytes"
+            detail=f"File size {len(file_bytes)} bytes exceeds maximum allowed size of {settings.max_file_size} bytes"
         )
+    await file.seek(0)
 
-    # Count existing for ref numbering
-    count = len(list(await session.scalars(
-        select(EvidenceRecord).where(EvidenceRecord.engagement_id == engagement_id)
-    )))
+    # H-8 FIX: Use MAX-based next ref instead of COUNT to avoid duplicate refs
+    # under concurrent uploads. COUNT returns the same value to two racing requests;
+    # MAX(evd_ref) + 1 pattern is safe when combined with DB-level uniqueness.
+    from sqlalchemy import func as _func
+    max_ref_result = await session.scalar(
+        select(_func.max(EvidenceRecord.evd_ref)).where(EvidenceRecord.engagement_id == eid)
+    )
+    if max_ref_result and max_ref_result.startswith("EVD-"):
+        try:
+            next_num = int(max_ref_result[4:]) + 1
+        except ValueError:
+            next_num = 1
+    else:
+        next_num = 1
 
-    # Save file to disk via LocalStorageBackend
+    # Save file to the configured evidence store
     file_path = await evidence_service.upload_evidence(engagement.tenant_id, file)
-    size_kb   = f"{(file.size or 0) // 1024} KB" if file.size else None
+    size_kb   = f"{len(file_bytes) // 1024} KB" if file_bytes else None
 
     # Determine type from extension
     fname = file.filename or ""
@@ -120,9 +164,9 @@ async def upload_evidence(
         ev_type = "Document"
 
     record = EvidenceRecord(
-        engagement_id = engagement_id,
+        engagement_id = eid,
         tenant_id     = engagement.tenant_id,
-        evd_ref       = f"EVD-{count + 1:03d}",
+        evd_ref       = f"EVD-{next_num:03d}",
         file_name     = fname,
         file_path     = file_path,
         file_size_kb  = size_kb,
@@ -134,7 +178,53 @@ async def upload_evidence(
     session.add(record)
     await session.commit()
     await session.refresh(record)
+    logger.info(
+        "evidence_uploaded",
+        source="FILE_UPLOAD",
+        tenant_id=engagement.tenant_id,
+        engagement_id=str(eid),
+        evidence_id=str(record.id),
+        file_name=fname,
+    )
+
+    # Auto-link transactions if provided
+    if transaction_ids:
+        try:
+            tx_uuids = [uuid.UUID(tid.strip()) for tid in transaction_ids.split(",") if tid.strip()]
+            if tx_uuids:
+                await evidence_service.link_evidence_to_transactions(
+                    session, record.id, tx_uuids, engagement.tenant_id, auth.client_name
+                )
+        except ValueError:
+            logger.warning(f"Failed to parse transaction_ids in upload: {transaction_ids}")
+
     return record
+
+
+@router.post("/evidence/{evidence_id}/link-transactions", status_code=status.HTTP_201_CREATED)
+async def link_evidence_to_tx(
+    evidence_id: str,
+    payload: LinkTransactionsRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+) -> dict:
+    """
+    Manually link an existing evidence file to a set of transactions.
+    """
+    try:
+        ev_id = uuid.UUID(evidence_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid evidence_id UUID")
+    
+    record = await session.get(EvidenceRecord, ev_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Evidence record not found")
+        
+    await evidence_service.link_evidence_to_transactions(
+        session, ev_id, payload.transaction_ids, record.tenant_id, auth.client_name
+    )
+    
+    return {"status": "success", "linked_count": len(payload.transaction_ids)}
 
 
 @router.delete("/engagements/{engagement_id}/evidence/{evidence_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -144,8 +234,23 @@ async def delete_evidence(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> None:
-    record = await session.get(EvidenceRecord, evidence_id)
-    if not record or record.engagement_id != engagement_id:
+    try:
+        eid = uuid.UUID(engagement_id)
+        evd_id = uuid.UUID(evidence_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID")
+    record = await session.get(EvidenceRecord, evd_id)
+    if not record or record.engagement_id != eid:
         raise HTTPException(status_code=404, detail="Evidence not found")
+
+    # M-9 FIX: sealed engagements are WORM — no mutations allowed
+    from arkashri.models import EngagementStatus
+    eng_for_delete = await session.get(Engagement, eid)
+    if eng_for_delete and eng_for_delete.status == EngagementStatus.SEALED:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete evidence from a sealed engagement. The audit bundle is WORM-locked."
+        )
+    await evidence_service.delete_evidence(record.file_path)
     await session.delete(record)
     await session.commit()

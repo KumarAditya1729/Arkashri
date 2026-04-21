@@ -38,10 +38,11 @@ from arkashri.models import (
 )
 from arkashri.dependencies import require_api_client, AuthContext, limiter
 from arkashri.services.audit_log import log_system_event
+from arkashri import SYSTEM_VERSION  # L-10: single source of truth
 
 router = APIRouter()
 
-SYSTEM_VERSION = "Arkashri_OS_2.0_Enterprise"
+# SYSTEM_VERSION imported from arkashri package — do not redefine locally.
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -49,6 +50,7 @@ SYSTEM_VERSION = "Arkashri_OS_2.0_Enterprise"
 class CreateSealSessionRequest(BaseModel):
     required_signatures: int = Field(default=2, ge=1, le=5, description="Number of partner signatures required before sealing (default 2: Engagement Partner + EQCR)")
     created_by: str = Field(default="system", description="User ID creating the session")
+    partner_emails: list[str] = Field(default_factory=list, description="Notification recipients for seal approvals")
 
 
 class SignRequest(BaseModel):
@@ -155,7 +157,11 @@ async def create_seal_session(
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> SealSessionOut:
     # Ensure engagement exists and is not already sealed
-    eng = (await db.scalars(select(Engagement).where(Engagement.id == engagement_id))).first()
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(422, "Invalid engagement_id UUID format.")
+    eng = (await db.scalars(select(Engagement).where(Engagement.id == eid))).first()
     if not eng:
         raise HTTPException(404, "Engagement not found.")
     if eng.sealed_at:
@@ -166,7 +172,7 @@ async def create_seal_session(
     # Prevent duplicate active sessions
     existing = (await db.scalars(
         select(SealSession).where(
-            SealSession.engagement_id == engagement_id,
+            SealSession.engagement_id == eid,
             SealSession.status.not_in([SealSessionStatus.WITHDRAWN]),
         )
     )).first()
@@ -176,7 +182,7 @@ async def create_seal_session(
     # Capture opinion snapshot at session creation time
     opinion = (await db.scalars(
         select(AuditOpinion)
-        .where(AuditOpinion.engagement_id == engagement_id)
+        .where(AuditOpinion.engagement_id == eid)
         .order_by(AuditOpinion.created_at.desc())
     )).first()
     if not opinion:
@@ -198,7 +204,7 @@ async def create_seal_session(
     }
 
     sess = SealSession(
-        engagement_id=engagement_id,
+        engagement_id=eid,
         required_signatures=payload.required_signatures,
         current_signature_count=0,
         status=SealSessionStatus.PENDING,
@@ -220,13 +226,13 @@ async def create_seal_session(
         extra_metadata={"session_id": str(sess.id), "required_signatures": payload.required_signatures}
     )
 
-    # Enqueue notification for partners (mock)
-    if hasattr(request.app.state, "redis_pool") and request.app.state.redis_pool:
+    notification_recipients = [email.strip() for email in payload.partner_emails if email.strip()]
+    if hasattr(request.app.state, "redis_pool") and request.app.state.redis_pool and notification_recipients:
         await request.app.state.redis_pool.enqueue_job(
             "send_email_task",
-            to_email="partners@arkashri-demo.io",
+            notification_recipients,
             subject=f"Action Required: Seal Session Created for {eng.client_name}",
-            body=f"A new seal session has been created for engagement {engagement_id}. Please review and sign."
+            body_text=f"A new seal session has been created for engagement {engagement_id}. Please review and sign.",
         )
 
     return _to_session_out(sess)
@@ -244,9 +250,13 @@ async def get_seal_session(
     db: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> SealSessionOut:
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(422, "Invalid engagement_id UUID format.")
     sess = (await db.scalars(
         select(SealSession).where(
-            SealSession.engagement_id == engagement_id,
+            SealSession.engagement_id == eid,
             SealSession.status.not_in([SealSessionStatus.WITHDRAWN]),
         )
     )).first()
@@ -345,16 +355,21 @@ async def sign_seal_session(
     if seal_sess.status == SealSessionStatus.WITHDRAWN:
         raise HTTPException(409, "SealSession has been withdrawn. Create a new one.")
 
-    # Prevent duplicate signature from same partner
+    # H-9: Bind partner identity to the authenticated caller, not caller-supplied strings.
+    # This prevents a user from signing as an arbitrary partner_user_id / partner_email.
+    authenticated_user_id = str(getattr(auth, "client_id", "") or getattr(auth, "user_id", "") or payload.partner_user_id)
+    authenticated_email   = str(getattr(auth, "email", "") or getattr(auth, "client_name", "") or payload.partner_email)
+
+    # Prevent duplicate signature from same partner (use authenticated identity)
     dup = (await db.scalars(
         select(SealSignature).where(
             SealSignature.seal_session_id == session_id,
-            SealSignature.partner_user_id == payload.partner_user_id,
+            SealSignature.partner_user_id == authenticated_user_id,
             SealSignature.withdrawn_at.is_(None),
         )
     )).first()
     if dup:
-        raise HTTPException(409, f"Partner {payload.partner_user_id} has already signed this session.")
+        raise HTTPException(409, f"You ({authenticated_user_id}) have already signed this session.")
 
     # Enforce override acknowledgement for sessions with known overrides
     eng = (await db.scalars(select(Engagement).where(Engagement.id == seal_sess.engagement_id))).first()
@@ -379,12 +394,12 @@ async def sign_seal_session(
             raise HTTPException(422, "Invalid ICAI Registration Number format. Must be FCA/ACA-XXXXXX or F/A-XXXXXX.")
 
     now = datetime.datetime.now(datetime.UTC)
-    sig_hash = _compute_signature_hash(session_id, payload.partner_user_id, now)
+    sig_hash = _compute_signature_hash(session_id, authenticated_user_id, now)
 
     sig = SealSignature(
         seal_session_id=session_id,
-        partner_user_id=payload.partner_user_id,
-        partner_email=payload.partner_email,
+        partner_user_id=authenticated_user_id,    # H-9: from auth, not caller payload
+        partner_email=authenticated_email,         # H-9: from auth, not caller payload
         role=payload.role,
         jurisdiction=payload.jurisdiction,
         override_count_acknowledged=override_count,
@@ -416,7 +431,7 @@ async def sign_seal_session(
     await log_system_event(
         db,
         tenant_id=auth.tenant_id,
-        user_email=payload.partner_email,
+        user_email=authenticated_email,
         action="PARTNER_SIGNED",
         resource_type="SEAL_SESSION",
         resource_id=str(session_id),
@@ -477,7 +492,7 @@ async def withdraw_signature(
     # Log the withdrawal
     await log_system_event(
         db,
-        tenant_id=auth.tenant_id,
+        tenant_id=_auth.tenant_id,
         user_id=None,
         user_email=sig.partner_email,
         action="PARTNER_SIGNATURE_WITHDRAWN",
@@ -554,7 +569,7 @@ async def verify_seal(
     # Log verification attempt
     await log_system_event(
         db,
-        tenant_id=auth.tenant_id,
+        tenant_id=_auth.tenant_id,
         action="SEAL_VERIFIED",
         resource_type="ENGAGEMENT",
         resource_id=str(engagement_id),
@@ -591,6 +606,7 @@ def _to_sig_out(s: SealSignature) -> SealSignatureOut:
         signature_hash=s.signature_hash,
         signed_at=s.signed_at.isoformat(),
         withdrawn_at=s.withdrawn_at.isoformat() if s.withdrawn_at else None,
+        ca_icai_reg_no=s.ca_icai_reg_no,   # M-10: was silently dropped before
     )
 
 

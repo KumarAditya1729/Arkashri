@@ -48,7 +48,7 @@ def split_into_chunks(
     step = chunk_words - overlap_words
 
     while position < len(words):
-        chunk = words[position : position + chunk_words]
+        chunk = words[position : position + chunk_words]  # type: ignore
         chunks.append(" ".join(chunk))
         if position + chunk_words >= len(words):
             break
@@ -139,16 +139,18 @@ async def query_knowledge(
         }
     )
 
-    stmt = (
-        select(KnowledgeChunk, KnowledgeDocument)
-        .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
-        .where(
-            KnowledgeDocument.is_active.is_(True),
-            KnowledgeDocument.jurisdiction.in_([jurisdiction, "GLOBAL"]),
-        )
-    )
+    # Optimization: Filter by keywords in SQL to reduce OOM risk
+    # Only load top 500 potential matches into memory for ranking
+    query_terms = [t for t in query_token_set if len(t) > 3]
+    if query_terms:
+        # Simple ilike check for at least one significant term to reduce candidate pool
+        from sqlalchemy import or_
+        filters = [KnowledgeChunk.chunk_text.ilike(f"%{term}%") for term in query_terms[:3]]
+        stmt = stmt.where(or_(*filters))
+
+    stmt = stmt.limit(1000) # Safety cap
     result = await session.execute(stmt)
-    candidates = list(result)
+    candidates = result.all()
 
     scored_matches: list[RagSourceMatch] = []
     for chunk, document in candidates:
@@ -166,7 +168,7 @@ async def query_knowledge(
                 jurisdiction=document.jurisdiction,
                 chunk_index=chunk.chunk_index,
                 chunk_hash=chunk.chunk_hash,
-                score=round(score, 6),
+                score=float(f"{score:.6f}"),
                 snippet=chunk.chunk_text[:420],
             )
         )

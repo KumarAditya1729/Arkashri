@@ -13,13 +13,14 @@ Endpoints:
 """
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from arkashri.db import get_session
 from arkashri.models import User, UserRole, ClientRole
+from arkashri.services.auth_sessions import create_login_session
 from arkashri.services.password import hash_password, verify_password
 from arkashri.dependencies import require_api_client, AuthContext
 
@@ -28,12 +29,20 @@ router = APIRouter()
 
 # ─── POST /auth/register — Public Self-Registration ──────────────────────────
 
+# Roles that self-registered users are ALLOWED to claim.
+# ADMIN and OPERATOR must be assigned by an existing ADMIN via POST /auth/users.
+_SELF_REGISTRATION_ALLOWED_ROLES: set[str] = {
+    "operator", "reviewer", "read_only", "auditor", "ca",
+    "OPERATOR", "REVIEWER", "READ_ONLY",
+}
+
+
 class RegisterRequest(BaseModel):
-    email:        str = Field(..., min_length=3)
-    password:     str = Field(..., min_length=8)
-    full_name:    str = Field(..., min_length=1, max_length=255)
+    email:        EmailStr = Field(..., description="Valid email address")
+    password:     str      = Field(..., min_length=8)
+    full_name:    str      = Field(..., min_length=1, max_length=255)
     organisation: str | None = None
-    role:         str = "OPERATOR"   # default: full audit operator
+    role:         str      = "OPERATOR"   # default: full audit operator
 
 
 
@@ -47,32 +56,47 @@ class RegisterRequest(BaseModel):
 )
 async def register_user(
     payload: RegisterRequest,
+    request: Request,
     db: AsyncSession = Depends(get_session),
 ):
     from fastapi.responses import JSONResponse
-    from arkashri.services.jwt_service import create_access_token, create_refresh_token
 
     email = payload.email.strip().lower()
     tenant_id = "default_tenant"   # all self-registered users land in default tenant
+
+    # ── SECURITY GATE: Block privilege escalation via self-registration ────────
+    # ADMIN can only be assigned by an existing ADMIN via POST /auth/users.
+    # Any attempt to self-assign ADMIN is rejected with 403.
+    if payload.role.upper() in {"ADMIN", "PARTNER"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "The role 'ADMIN' cannot be self-assigned during registration. "
+                "Contact your platform administrator to be granted elevated privileges."
+            ),
+        )
+
+    if payload.role not in _SELF_REGISTRATION_ALLOWED_ROLES:
+        # Unknown role — safe default
+        payload.role = "REVIEWER"
 
     # Check uniqueness
     existing = (await db.scalars(select(User).where(User.email == email))).first()
     if existing:
         raise HTTPException(status_code=409, detail=f"Email {payload.email} is already registered.")
 
-    # Map incoming role string to nearest UserRole
-    role_map = {
-        "admin": UserRole.ADMIN,
+    # Map incoming role string to UserRole — ADMIN excluded from map intentionally.
+    role_map: dict[str, UserRole] = {
         "operator": UserRole.OPERATOR,
-        "auditor": UserRole.OPERATOR,
-        "reviewer": UserRole.REVIEWER,
-        "read_only": UserRole.READ_ONLY,
-        "ADMIN": UserRole.ADMIN,
         "OPERATOR": UserRole.OPERATOR,
+        "auditor":  UserRole.OPERATOR,
+        "ca":       UserRole.OPERATOR,
+        "reviewer": UserRole.REVIEWER,
         "REVIEWER": UserRole.REVIEWER,
+        "read_only": UserRole.READ_ONLY,
         "READ_ONLY": UserRole.READ_ONLY,
     }
-    db_role = role_map.get(payload.role, UserRole.OPERATOR)
+    db_role = role_map.get(payload.role, UserRole.REVIEWER)
 
     initials = "".join(w[0] for w in payload.full_name.split() if w).upper()[:10] or "AU"
 
@@ -87,21 +111,17 @@ async def register_user(
         created_by="self-registration",
     )
     db.add(user)
+    await db.flush()
+    bundle = await create_login_session(db, user=user, request=request)
     await db.commit()
-    await db.refresh(user)
-
-    access_token = create_access_token(
-        sub=str(user.id), email=user.email, role=user.role.value,
-        tenant_id=user.tenant_id, full_name=user.full_name, initials=user.initials, user_id=str(user.id),
-    )
-    refresh_token = create_refresh_token(sub=str(user.id), user_id=str(user.id), tenant_id=user.tenant_id)
 
     return JSONResponse(
         status_code=201,
         content={
-            "access_token": access_token,
-            "refresh_token": refresh_token,
+            "access_token": bundle.access_token,
+            "refresh_token": bundle.refresh_token,
             "token_type": "bearer",
+            "expires_in": bundle.expires_in,
             "user": {
                 "id": str(user.id), "email": user.email, "full_name": user.full_name,
                 "role": user.role.value, "tenant_id": user.tenant_id, "initials": user.initials,
@@ -283,11 +303,17 @@ async def reset_password(
 ) -> dict:
     user = await _get_or_404(db, user_id, auth.tenant_id)
 
-    # Non-admin callers must verify their current password
-    (str(user_id) == getattr(auth, "user_id", None))
-    is_admin = (ClientRole.ADMIN in (auth.role,) if hasattr(auth, "role") else False)
+    # Determine caller identity — compare string forms of both IDs
+    is_self = str(user.id) == str(getattr(auth, "client_id", ""))
+    is_admin = getattr(auth, "role", None) == ClientRole.ADMIN
 
+    # Non-admins can only reset their own password, and must supply current_password
     if not is_admin:
+        if not is_self:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only reset your own password. Contact an ADMIN to reset another user's password.",
+            )
         if not payload.current_password:
             raise HTTPException(422, "current_password is required for self-service password reset.")
         if not verify_password(payload.current_password, user.hashed_password):

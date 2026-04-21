@@ -1,12 +1,13 @@
 # pyre-ignore-all-errors
-import uuid
+import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from arkashri.dependencies import get_session, require_api_client
-from arkashri.dependencies import AuthContext, require_api_client
+from arkashri.dependencies import AuthContext
 from arkashri.models import SAChecklistItem, Engagement, EngagementStatus, ClientRole
 from arkashri.services.sa_compliance import generate_sa_checklist, generate_nfra_package
 
@@ -52,9 +53,6 @@ async def get_engagement_sa_checklist(
             } for i in items
         ]
     }
-
-from pydantic import BaseModel
-import datetime
 
 class SAChecklistUpdate(BaseModel):
     status: str

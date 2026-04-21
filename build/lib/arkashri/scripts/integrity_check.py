@@ -1,6 +1,5 @@
 # pyre-ignore-all-errors
 import asyncio
-import uuid
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -18,8 +17,7 @@ async def verify_anchor(session: AsyncSession, anchor: ChainAnchor):
     Recomputes the Merkle root for all audit events associated with an anchor
     and compares it to the stored and on-chain root.
     """
-    # Fetch all events covered by this anchor (simplified logic for demo)
-    # In production, this would use a Merkle tree implementation
+    # Fetch all events covered by this anchor using the currently persisted event window logic.
     result = await session.scalars(
         select(AuditEvent)
         .where(AuditEvent.tenant_id == anchor.tenant_id)

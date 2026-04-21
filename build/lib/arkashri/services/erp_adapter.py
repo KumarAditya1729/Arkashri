@@ -37,7 +37,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import uuid
 from datetime import date, datetime
 from typing import Any
 
@@ -53,8 +52,14 @@ ERPSystem = {
 }
 
 
+class ERPValidationError(ValueError):
+    pass
+
+
 def _iso_date(raw: Any) -> str:
     """Normalize any date representation to YYYY-MM-DD."""
+    if raw is None or str(raw).strip() == "":
+        raise ERPValidationError("Missing required transaction date.")
     if isinstance(raw, (date, datetime)):
         return raw.strftime("%Y-%m-%d")
     s = str(raw).strip()
@@ -64,18 +69,40 @@ def _iso_date(raw: Any) -> str:
             return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
-    return s  # Return as-is if unparseable — will surface in risk_flags
+    raise ERPValidationError(f"Unsupported transaction date format: {s}")
 
 
 def _clean_amount(raw: Any) -> float:
     """Remove currency symbols and parse to float."""
     if isinstance(raw, (int, float)):
-        return abs(float(raw))
+        amount = abs(float(raw))
+        if amount == 0.0:
+            raise ERPValidationError("Transaction amount must be non-zero.")
+        return amount
     s = re.sub(r"[^\d.\-]", "", str(raw))
     try:
-        return abs(float(s))
+        amount = abs(float(s))
+        if amount == 0.0:
+            raise ERPValidationError("Transaction amount must be non-zero.")
+        return amount
     except ValueError:
-        return 0.0
+        raise ERPValidationError(f"Invalid transaction amount: {raw}")
+
+
+def _required_text(raw: dict[str, Any], *keys: str, label: str) -> str:
+    for key in keys:
+        value = raw.get(key)
+        if value is not None and str(value).strip() != "":
+            return str(value).strip()
+    raise ERPValidationError(f"Missing required field: {label}")
+
+
+def _optional_text(raw: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = raw.get(key)
+        if value is not None and str(value).strip() != "":
+            return str(value).strip()
+    return None
 
 
 def _payload_hash(payload: dict) -> str:
@@ -92,32 +119,44 @@ def normalize_sap(raw: dict) -> dict:
     Key SAP fields: BELNR (doc number), BUDAT (posting date), DMBTR (amount),
     HKONT (GL account), SGTXT (description), LIFNR/KUNNR (vendor/customer)
     """
-    amount = _clean_amount(raw.get("DMBTR") or raw.get("amount") or 0)
+    amount = _clean_amount(raw.get("DMBTR") or raw.get("amount"))
     shkzg  = str(raw.get("SHKZG") or raw.get("type") or "S")  # S=debit, H=credit
     entry_type = "DEBIT" if shkzg.upper() in ("S", "D", "DEBIT") else "CREDIT"
 
     risk_flags: list[str] = []
-    if amount == 0:
-        risk_flags.append("ZERO_AMOUNT")
     if not raw.get("LIFNR") and not raw.get("KUNNR") and not raw.get("entity"):
         risk_flags.append("MISSING_COUNTERPARTY")
 
+    ref = _required_text(raw, "BELNR", "ref", label="BELNR/ref")
+    txn_date = _iso_date(_required_text(raw, "BUDAT", "date", label="BUDAT/date"))
+    currency = _required_text(raw, "WAERS", "currency", label="WAERS/currency")
+    account_code = _required_text(raw, "HKONT", "account_code", label="HKONT/account_code")
+    account_name = _required_text(raw, "TXT50", "account_name", label="TXT50/account_name")
+    description = _required_text(raw, "SGTXT", "description", label="SGTXT/description")
+    erp_doc_id = _required_text(raw, "BELNR", "erp_doc_id", label="BELNR/erp_doc_id")
+
     return {
-        "ref":          str(raw.get("BELNR") or raw.get("ref") or uuid.uuid4())[:64],
-        "date":         _iso_date(raw.get("BUDAT") or raw.get("date") or date.today()),
+        "ref":          ref[:64],
+        "date":         txn_date,
         "type":         entry_type,
         "amount":       amount,
-        "currency":     str(raw.get("WAERS") or raw.get("currency") or "INR"),
-        "account_code": str(raw.get("HKONT") or raw.get("account_code") or ""),
-        "account_name": str(raw.get("TXT50") or raw.get("account_name") or ""),
-        "cost_center":  str(raw.get("KOSTL") or raw.get("cost_center") or "") or None,
-        "description":  str(raw.get("SGTXT") or raw.get("description") or ""),
-        "entity":       str(raw.get("NAME1") or raw.get("entity") or "UNKNOWN"),
-        "entity_code":  str(raw.get("LIFNR") or raw.get("KUNNR") or raw.get("entity_code") or "") or None,
-        "tax_code":     str(raw.get("MWSKZ") or raw.get("tax_code") or "") or None,
+        "currency":     currency,
+        "account_code": account_code,
+        "account_name": account_name,
+        "cost_center":  _optional_text(raw, "KOSTL", "cost_center"),
+        "description":  description,
+        "entity":       _optional_text(raw, "NAME1", "entity") or "",
+        "entity_code":  _optional_text(raw, "LIFNR", "KUNNR", "entity_code"),
+        "tax_code":     _optional_text(raw, "MWSKZ", "tax_code"),
         "erp_system":   "SAP_S4HANA",
-        "erp_doc_id":   str(raw.get("BELNR") or raw.get("erp_doc_id") or ""),
+        "erp_doc_id":   erp_doc_id,
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": ref,
+            "date": txn_date,
+            "amount": amount,
+            "account_code": account_code,
+        }),
     }
 
 
@@ -129,33 +168,49 @@ def normalize_oracle(raw: dict) -> dict:
     Key fields: AcctdCr, AcctdDr, CurrencyCode, AccountedDate,
     CodeCombinationId, Description, ExternalReference
     """
-    debit  = _clean_amount(raw.get("AcctdDr") or raw.get("debit") or 0)
-    credit = _clean_amount(raw.get("AcctdCr") or raw.get("credit") or 0)
+    debit_raw = raw.get("AcctdDr") or raw.get("debit")
+    credit_raw = raw.get("AcctdCr") or raw.get("credit")
+    debit = abs(float(re.sub(r"[^\d.\-]", "", str(debit_raw)))) if debit_raw not in (None, "") else 0.0
+    credit = abs(float(re.sub(r"[^\d.\-]", "", str(credit_raw)))) if credit_raw not in (None, "") else 0.0
     amount = debit if debit > 0 else credit
+    if amount <= 0:
+        raise ERPValidationError("Oracle journal entry requires AcctdDr or AcctdCr.")
     entry_type = "DEBIT" if debit > 0 else "CREDIT"
 
     risk_flags: list[str] = []
-    if amount == 0:
-        risk_flags.append("ZERO_AMOUNT")
     if debit > 0 and credit > 0:
         risk_flags.append("SIMULTANEOUS_DR_CR")
 
+    ref = _required_text(raw, "ExternalReference", "JournalEntryLineId", label="ExternalReference/JournalEntryLineId")
+    txn_date = _iso_date(_required_text(raw, "AccountedDate", "date", label="AccountedDate/date"))
+    currency = _required_text(raw, "CurrencyCode", "currency", label="CurrencyCode/currency")
+    account_code = _required_text(raw, "CodeCombinationId", "account_code", label="CodeCombinationId/account_code")
+    account_name = _required_text(raw, "AccountName", "account_name", label="AccountName/account_name")
+    description = _required_text(raw, "Description", "description", label="Description")
+    erp_doc_id = _required_text(raw, "JournalEntryLineId", "erp_doc_id", label="JournalEntryLineId/erp_doc_id")
+
     return {
-        "ref":          str(raw.get("ExternalReference") or raw.get("JournalEntryLineId") or uuid.uuid4())[:64],
-        "date":         _iso_date(raw.get("AccountedDate") or raw.get("date") or date.today()),
+        "ref":          ref[:64],
+        "date":         txn_date,
         "type":         entry_type,
         "amount":       amount,
-        "currency":     str(raw.get("CurrencyCode") or raw.get("currency") or "USD"),
-        "account_code": str(raw.get("CodeCombinationId") or raw.get("account_code") or ""),
-        "account_name": str(raw.get("AccountName") or raw.get("account_name") or ""),
-        "cost_center":  str(raw.get("CostCenter") or raw.get("cost_center") or "") or None,
-        "description":  str(raw.get("Description") or raw.get("description") or ""),
-        "entity":       str(raw.get("PartyName") or raw.get("entity") or "UNKNOWN"),
-        "entity_code":  str(raw.get("PartyId") or raw.get("entity_code") or "") or None,
-        "tax_code":     str(raw.get("TaxCode") or raw.get("tax_code") or "") or None,
+        "currency":     currency,
+        "account_code": account_code,
+        "account_name": account_name,
+        "cost_center":  _optional_text(raw, "CostCenter", "cost_center"),
+        "description":  description,
+        "entity":       _optional_text(raw, "PartyName", "entity") or "",
+        "entity_code":  _optional_text(raw, "PartyId", "entity_code"),
+        "tax_code":     _optional_text(raw, "TaxCode", "tax_code"),
         "erp_system":   "ORACLE_FUSION",
-        "erp_doc_id":   str(raw.get("JournalEntryLineId") or raw.get("erp_doc_id") or ""),
+        "erp_doc_id":   erp_doc_id,
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": ref,
+            "date": txn_date,
+            "amount": amount,
+            "account_code": account_code,
+        }),
     }
 
 
@@ -167,7 +222,7 @@ def normalize_tally(raw: dict) -> dict:
     Key fields: VOUCHERNUMBER, DATE, AMOUNT, LEDGERNAME,
     PARTYLEDGERNAME, NARRATION, GSTREGISTRATIONNUMBER
     """
-    amount     = _clean_amount(raw.get("AMOUNT") or raw.get("amount") or 0)
+    amount     = _clean_amount(raw.get("AMOUNT") or raw.get("amount"))
     voucher_type = str(raw.get("VOUCHERTYPE") or raw.get("type") or "Journal").upper()
     if "RECEIPT" in voucher_type or "CREDIT" in voucher_type or "SALES" in voucher_type:
         entry_type = "CREDIT"
@@ -179,8 +234,6 @@ def normalize_tally(raw: dict) -> dict:
         entry_type = "TRANSFER"
 
     risk_flags: list[str] = []
-    if amount == 0:
-        risk_flags.append("ZERO_AMOUNT")
     # Flag round-number transactions (Benford's Law anomaly)
     if amount > 0 and amount == int(amount) and amount % 10000 == 0:
         risk_flags.append("ROUND_NUMBER_HIGH_VALUE")
@@ -188,22 +241,34 @@ def normalize_tally(raw: dict) -> dict:
     if not gst_no and amount > 50000:
         risk_flags.append("MISSING_GST_HIGH_VALUE")
 
+    ref = _required_text(raw, "VOUCHERNUMBER", "ref", label="VOUCHERNUMBER/ref")
+    txn_date = _iso_date(_required_text(raw, "DATE", "date", label="DATE/date"))
+    currency = _required_text(raw, "CURRENCY", "currency", label="CURRENCY/currency")
+    account_name = _required_text(raw, "LEDGERNAME", "account_name", label="LEDGERNAME/account_name")
+    description = _required_text(raw, "NARRATION", "description", label="NARRATION/description")
+
     return {
-        "ref":          str(raw.get("VOUCHERNUMBER") or raw.get("ref") or uuid.uuid4())[:64],
-        "date":         _iso_date(raw.get("DATE") or raw.get("date") or date.today()),
+        "ref":          ref[:64],
+        "date":         txn_date,
         "type":         entry_type,
         "amount":       amount,
-        "currency":     str(raw.get("CURRENCY") or raw.get("currency") or "INR"),
-        "account_code": str(raw.get("LEDGERNAME") or raw.get("account_code") or ""),
-        "account_name": str(raw.get("LEDGERNAME") or raw.get("account_name") or ""),
-        "cost_center":  str(raw.get("COSTCENTRE") or raw.get("cost_center") or "") or None,
-        "description":  str(raw.get("NARRATION") or raw.get("description") or ""),
-        "entity":       str(raw.get("PARTYLEDGERNAME") or raw.get("entity") or "UNKNOWN"),
-        "entity_code":  str(raw.get("VENDORCODE") or raw.get("entity_code") or "") or None,
-        "tax_code":     str(gst_no or "") or None,
+        "currency":     currency,
+        "account_code": _optional_text(raw, "account_code", "LEDGERNAME") or account_name,
+        "account_name": account_name,
+        "cost_center":  _optional_text(raw, "COSTCENTRE", "cost_center"),
+        "description":  description,
+        "entity":       _optional_text(raw, "PARTYLEDGERNAME", "entity") or "",
+        "entity_code":  _optional_text(raw, "VENDORCODE", "entity_code"),
+        "tax_code":     str(gst_no).strip() if gst_no else None,
         "erp_system":   "TALLY_PRIME",
-        "erp_doc_id":   str(raw.get("VOUCHERNUMBER") or raw.get("erp_doc_id") or ""),
+        "erp_doc_id":   _required_text(raw, "VOUCHERNUMBER", "erp_doc_id", label="VOUCHERNUMBER/erp_doc_id"),
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": ref,
+            "date": txn_date,
+            "amount": amount,
+            "account_code": account_name,
+        }),
     }
 
 
@@ -215,30 +280,40 @@ def normalize_zoho(raw: dict) -> dict:
     Key fields: journal_id, date, debit_or_credit, amount,
     account_id, account_name, reference_number, tax_id
     """
-    amount      = _clean_amount(raw.get("amount") or 0)
+    amount      = _clean_amount(raw.get("amount"))
     dr_cr       = str(raw.get("debit_or_credit") or raw.get("type") or "debit").lower()
     entry_type  = "DEBIT" if "debit" in dr_cr or "dr" in dr_cr else "CREDIT"
 
     risk_flags: list[str] = []
-    if amount == 0:
-        risk_flags.append("ZERO_AMOUNT")
+    ref = _required_text(raw, "reference_number", "journal_id", label="reference_number/journal_id")
+    txn_date = _iso_date(_required_text(raw, "date", label="date"))
+    currency = _required_text(raw, "currency_code", "currency", label="currency_code/currency")
+    account_code = _required_text(raw, "account_id", "account_code", label="account_id/account_code")
+    account_name = _required_text(raw, "account_name", label="account_name")
+    erp_doc_id = _required_text(raw, "journal_id", "erp_doc_id", label="journal_id/erp_doc_id")
 
     return {
-        "ref":          str(raw.get("reference_number") or raw.get("journal_id") or uuid.uuid4())[:64],
-        "date":         _iso_date(raw.get("date") or date.today()),
+        "ref":          ref[:64],
+        "date":         txn_date,
         "type":         entry_type,
         "amount":       amount,
-        "currency":     str(raw.get("currency_code") or raw.get("currency") or "INR"),
-        "account_code": str(raw.get("account_id") or raw.get("account_code") or ""),
-        "account_name": str(raw.get("account_name") or ""),
+        "currency":     currency,
+        "account_code": account_code,
+        "account_name": account_name,
         "cost_center":  None,
-        "description":  str(raw.get("notes") or raw.get("description") or ""),
-        "entity":       str(raw.get("vendor_name") or raw.get("customer_name") or raw.get("entity") or "UNKNOWN"),
-        "entity_code":  str(raw.get("vendor_id") or raw.get("customer_id") or raw.get("entity_code") or "") or None,
-        "tax_code":     str(raw.get("tax_id") or raw.get("tax_code") or "") or None,
+        "description":  _required_text(raw, "notes", "description", label="notes/description"),
+        "entity":       _optional_text(raw, "vendor_name", "customer_name", "entity") or "",
+        "entity_code":  _optional_text(raw, "vendor_id", "customer_id", "entity_code"),
+        "tax_code":     _optional_text(raw, "tax_id", "tax_code"),
         "erp_system":   "ZOHO_BOOKS",
-        "erp_doc_id":   str(raw.get("journal_id") or raw.get("erp_doc_id") or ""),
+        "erp_doc_id":   erp_doc_id,
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": ref,
+            "date": txn_date,
+            "amount": amount,
+            "account_code": account_code,
+        }),
     }
 
 
@@ -251,7 +326,7 @@ def normalize_quickbooks(raw: dict) -> dict:
     PostingType (Debit/Credit), AccountRef, EntityRef
     """
     detail      = raw.get("JournalEntryLineDetail") or raw.get("detail") or {}
-    amount      = _clean_amount(raw.get("Amount") or raw.get("amount") or 0)
+    amount      = _clean_amount(raw.get("Amount") or raw.get("amount"))
     posting     = str(detail.get("PostingType") or raw.get("type") or "Debit")
     entry_type  = "DEBIT" if "debit" in posting.lower() else "CREDIT"
 
@@ -259,25 +334,35 @@ def normalize_quickbooks(raw: dict) -> dict:
     entity_ref = detail.get("Entity") or raw.get("EntityRef") or {}
 
     risk_flags: list[str] = []
-    if amount == 0:
-        risk_flags.append("ZERO_AMOUNT")
+    ref = _required_text(raw, "Id", "ref", label="Id/ref")
+    txn_date = _iso_date(_required_text(raw, "TxnDate", "date", label="TxnDate/date"))
+    currency = _required_text(raw.get("CurrencyRef") or {}, "value", label="CurrencyRef.value") if isinstance(raw.get("CurrencyRef"), dict) else _required_text(raw, "currency", label="currency")
+    account_code = _required_text(acct_ref, "value", label="AccountRef.value")
+    account_name = _required_text(acct_ref, "name", label="AccountRef.name")
+    description = _required_text(raw, "Description", "description", label="Description")
 
     return {
-        "ref":          str(raw.get("Id") or raw.get("ref") or uuid.uuid4())[:64],
-        "date":         _iso_date(raw.get("TxnDate") or raw.get("date") or date.today()),
+        "ref":          ref[:64],
+        "date":         txn_date,
         "type":         entry_type,
         "amount":       amount,
-        "currency":     str(raw.get("CurrencyRef", {}).get("value") or raw.get("currency") or "USD"),
-        "account_code": str(acct_ref.get("value") or raw.get("account_code") or ""),
-        "account_name": str(acct_ref.get("name") or raw.get("account_name") or ""),
-        "cost_center":  str(detail.get("ClassRef", {}).get("name") or raw.get("cost_center") or "") or None,
-        "description":  str(raw.get("Description") or raw.get("description") or ""),
-        "entity":       str(entity_ref.get("name") or raw.get("entity") or "UNKNOWN"),
-        "entity_code":  str(entity_ref.get("type") or raw.get("entity_code") or "") or None,
-        "tax_code":     str(raw.get("TaxCodeRef", {}).get("value") or raw.get("tax_code") or "") or None,
+        "currency":     currency,
+        "account_code": account_code,
+        "account_name": account_name,
+        "cost_center":  _optional_text(detail.get("ClassRef") or {}, "name") if isinstance(detail.get("ClassRef"), dict) else _optional_text(raw, "cost_center"),
+        "description":  description,
+        "entity":       _optional_text(entity_ref, "name") if isinstance(entity_ref, dict) else _optional_text(raw, "entity") or "",
+        "entity_code":  _optional_text(entity_ref, "type") if isinstance(entity_ref, dict) else _optional_text(raw, "entity_code"),
+        "tax_code":     _optional_text(raw.get("TaxCodeRef") or {}, "value") if isinstance(raw.get("TaxCodeRef"), dict) else _optional_text(raw, "tax_code"),
         "erp_system":   "QUICKBOOKS",
-        "erp_doc_id":   str(raw.get("Id") or raw.get("erp_doc_id") or ""),
+        "erp_doc_id":   _required_text(raw, "Id", "erp_doc_id", label="Id/erp_doc_id"),
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": ref,
+            "date": txn_date,
+            "amount": amount,
+            "account_code": account_code,
+        }),
     }
 
 
@@ -288,27 +373,38 @@ def normalize_generic(raw: dict) -> dict:
     Passthrough normalizer for flat file / CSV uploads.
     Caller must pre-map columns to canonical keys.
     """
-    amount     = _clean_amount(raw.get("amount") or raw.get("AMOUNT") or 0)
+    amount     = _clean_amount(raw.get("amount") or raw.get("AMOUNT"))
     risk_flags: list[str] = list(raw.get("risk_flags") or [])
-    if amount == 0:
-        risk_flags.append("ZERO_AMOUNT")
+    ref = _required_text(raw, "ref", label="ref")
+    txn_date = _iso_date(_required_text(raw, "date", label="date"))
+    currency = _required_text(raw, "currency", label="currency")
+    account_code = _required_text(raw, "account_code", label="account_code")
+    account_name = _required_text(raw, "account_name", label="account_name")
+    description = _required_text(raw, "description", label="description")
+    entry_type = _required_text(raw, "type", label="type").upper()
 
     return {
-        "ref":          str(raw.get("ref") or uuid.uuid4())[:64],
-        "date":         _iso_date(raw.get("date") or date.today()),
-        "type":         str(raw.get("type") or "JOURNAL").upper(),
+        "ref":          ref[:64],
+        "date":         txn_date,
+        "type":         entry_type,
         "amount":       amount,
-        "currency":     str(raw.get("currency") or "INR"),
-        "account_code": str(raw.get("account_code") or ""),
-        "account_name": str(raw.get("account_name") or ""),
-        "cost_center":  str(raw.get("cost_center") or "") or None,
-        "description":  str(raw.get("description") or ""),
-        "entity":       str(raw.get("entity") or "UNKNOWN"),
-        "entity_code":  str(raw.get("entity_code") or "") or None,
-        "tax_code":     str(raw.get("tax_code") or "") or None,
+        "currency":     currency,
+        "account_code": account_code,
+        "account_name": account_name,
+        "cost_center":  _optional_text(raw, "cost_center"),
+        "description":  description,
+        "entity":       _optional_text(raw, "entity") or "",
+        "entity_code":  _optional_text(raw, "entity_code"),
+        "tax_code":     _optional_text(raw, "tax_code"),
         "erp_system":   "GENERIC_CSV",
-        "erp_doc_id":   str(raw.get("erp_doc_id") or raw.get("ref") or ""),
+        "erp_doc_id":   _required_text(raw, "erp_doc_id", "ref", label="erp_doc_id/ref"),
         "risk_flags":   risk_flags,
+        "payload_hash": _payload_hash({
+            "ref": ref,
+            "date": txn_date,
+            "amount": amount,
+            "account_code": account_code,
+        }),
     }
 
 

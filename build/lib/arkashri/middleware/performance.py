@@ -9,7 +9,7 @@ import asyncio
 import gzip
 import hashlib
 import time
-from typing import Dict, Optional, Tuple, Any
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import redis.asyncio as redis
@@ -33,6 +33,7 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
         self.settings = get_settings()
         self.redis_url = redis_url
         self._redis: Optional[redis.Redis] = None
+        self._redis_unavailable: bool = False
         self.logger = structlog.get_logger("advanced_cache")
         
         # Cache configuration
@@ -49,30 +50,45 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
         }
     
     async def dispatch(self, request: Request, call_next) -> Response:
-        """Process request with caching"""
+        """Process request with caching — fails open if Redis unavailable."""
         # Only cache GET requests
         if request.method not in self.cacheable_methods:
             return await call_next(request)
-        
+
+        # Skip cache entirely if Redis not reachable or not initialized
+        if self._redis_unavailable or self._redis is None:
+            if not self._redis_unavailable:
+                await self._connect_redis()
+            if self._redis is None:
+                return await call_next(request)
+
         # Generate cache key
         cache_key = self._generate_cache_key(request)
-        
-        # Try to get from cache
-        cached_response = await self._get_from_cache(cache_key)
-        if cached_response:
-            performance_logger.log_cache_operation("hit", cache_key, hit=True)
-            return cached_response
-        
+
+        # Try to get from cache — never crash if Redis is down
+        try:
+            cached_response = await self._get_from_cache(cache_key)
+            if cached_response:
+                performance_logger.log_cache_operation("hit", cache_key, hit=True)
+                return cached_response
+        except Exception:
+            self._redis_unavailable = True
+            self.logger.warning("redis_unavailable_cache_disabled")
+            return await call_next(request)
+
         # Process request
         start_time = time.time()
         response = await call_next(request)
         processing_time = (time.time() - start_time) * 1000
-        
-        # Cache response if eligible
+
+        # Cache response if eligible — silently skip on error
         if self._should_cache_response(request, response):
-            await self._cache_response(cache_key, response, processing_time)
-            performance_logger.log_cache_operation("set", cache_key)
-        
+            try:
+                await self._cache_response(request, cache_key, response, processing_time)
+                performance_logger.log_cache_operation("set", cache_key)
+            except Exception:
+                pass
+
         performance_logger.log_cache_operation("miss", cache_key, hit=False)
         return response
     
@@ -112,6 +128,9 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
         """Get response from cache"""
         if not self._redis:
             await self._connect_redis()
+        
+        if not self._redis or self._redis_unavailable:
+            return None
         
         try:
             cached_data = await self._redis.get(cache_key)
@@ -159,10 +178,10 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
         
         return True
     
-    async def _cache_response(self, cache_key: str, response: Response, processing_time: float):
+    async def _cache_response(self, request: Request, cache_key: str, response: Response, processing_time: float):
         """Cache response data"""
-        if not self._redis:
-            await self._connect_redis()
+        if not self._redis or self._redis_unavailable:
+            return
         
         try:
             # Determine TTL based on endpoint
@@ -195,10 +214,20 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
         return self.default_ttl
     
     async def _connect_redis(self):
-        """Connect to Redis"""
+        """Connect to Redis — marks unavailable on failure so server keeps running."""
+        if self._redis_unavailable:
+            return
         if not self._redis:
-            self._redis = redis.from_url(self.redis_url, decode_responses=True)
-            await self._redis.ping()
+            try:
+                self._redis = redis.from_url(
+                    self.redis_url, decode_responses=True,
+                    socket_connect_timeout=2, socket_timeout=2,
+                )
+                await self._redis.ping()
+            except Exception as exc:
+                self._redis = None
+                self._redis_unavailable = True
+                self.logger.warning("redis_connect_failed_cache_disabled", error=str(exc))
     
     async def cleanup(self):
         """Cleanup resources"""

@@ -1,8 +1,9 @@
 {
   "venvPath": "/Users/adityashrivastava/Desktop/company_1",
-  "venv": ".venv",
+  "venv": ".venv-test",
   "extraPaths": [
-    "/Users/adityashrivastava/Desktop/company_1"
+    "/Users/adityashrivastava/Desktop/company_1",
+    "/Users/adityashrivastava/Desktop/company_1/arkashri-ai-engineer"
   ],
   "reportMissingImports": "none"
 }

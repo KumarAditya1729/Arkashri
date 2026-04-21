@@ -1,8 +1,8 @@
 # pyre-ignore-all-errors
 import structlog
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from arkashri.dependencies import require_api_client
-from arkashri.utils.error_handling import handle_errors
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
+
+from arkashri.services.jwt_service import decode_ws_ticket
 
 logger = structlog.get_logger("api.websockets")
 
@@ -56,7 +56,7 @@ async def audit_stream(
     websocket: WebSocket, 
     tenant_id: str, 
     jurisdiction: str,
-    api_key: str = Query(default=None, alias="X-Arkashri-Key")
+    ticket: str | None = Query(default=None),
 ):
     """
     Establish a persistent real-time connection to stream audit progress 
@@ -64,13 +64,30 @@ async def audit_stream(
     """
     channel = f"audit:{tenant_id}:{jurisdiction}"
     try:
+        if not ticket:
+            await websocket.close(code=4401, reason="Missing WebSocket ticket")
+            return
+
+        try:
+            claims = decode_ws_ticket(ticket)
+        except HTTPException as exc:
+            logger.warning("websocket_auth_failed", tenant_id=tenant_id, detail=exc.detail)
+            await websocket.close(code=4401, reason="Invalid WebSocket ticket")
+            return
+
+        if claims.get("tenant_id") != tenant_id or str(claims.get("jurisdiction", "")).upper() != jurisdiction.upper():
+            logger.warning("websocket_scope_mismatch", tenant_id=tenant_id, jurisdiction=jurisdiction)
+            await websocket.close(code=4403, reason="Ticket scope does not match requested channel")
+            return
+
         # manager.connect accepts the WebSocket — do NOT call accept() here too
         await manager.connect(channel, websocket)
-
-        if api_key:
-            logger.info("websocket_auth_attempt", tenant_id=tenant_id, api_key_provided=True)
-        else:
-            logger.info("websocket_auth_attempt", tenant_id=tenant_id, api_key_provided=False)
+        logger.info(
+            "websocket_auth_success",
+            tenant_id=tenant_id,
+            jurisdiction=jurisdiction,
+            user_id=claims.get("user_id"),
+        )
 
         try:
             while True:

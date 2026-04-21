@@ -13,10 +13,10 @@ import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Optional, TypeVar, Union
 
 import structlog
-from circuitbreaker import circuit, CircuitBreakerError
+from circuitbreaker import circuit
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from tenacity import (
@@ -299,7 +299,7 @@ def external_service_retry(
                     
                     wait_time = min(wait_min * (2 ** attempt), wait_max) + random.uniform(0, 1)
                     logger.warning(
-                        f"external_service_retry_attempt",
+                        "external_service_retry_attempt",
                         service=service_name,
                         attempt=attempt + 1,
                         max_attempts=max_attempts,

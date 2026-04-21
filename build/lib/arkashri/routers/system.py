@@ -23,6 +23,20 @@ from arkashri.dependencies import require_api_client, AuthContext, _audit_regist
 
 router = APIRouter()
 
+@router.post("/debug-fs")
+async def debug_fs() -> dict[str, Any]:
+    import os
+    app_files = os.listdir("/app") if os.path.exists("/app") else []
+    wp_files = os.listdir("/app/workflow_pack") if os.path.exists("/app/workflow_pack") else []
+    return {
+        "cwd": os.getcwd(),
+        "app_exists": os.path.exists("/app"),
+        "app_files": app_files,
+        "wp_exists": os.path.exists("/app/workflow_pack"),
+        "wp_files": wp_files,
+        "wp_index_exists": os.path.exists("/app/workflow_pack/index.json")
+    }
+
 @router.post("/bootstrap/minimal", response_model=SystemBootstrapResponse, status_code=status.HTTP_201_CREATED)
 async def bootstrap_minimal(
     session: AsyncSession = Depends(get_session),

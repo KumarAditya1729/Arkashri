@@ -56,13 +56,19 @@ class RateLimitBackend:
         self.redis_url = redis_url
         self._redis: Optional[redis.Redis] = None
         self.logger = structlog.get_logger("rate_limit_backend")
+        self._redis_available = True
     
     async def connect(self):
         """Connect to Redis"""
-        if not self._redis:
-            self._redis = redis.from_url(self.redis_url, decode_responses=True)
-            await self._redis.ping()
-            self.logger.info("rate_limit_redis_connected")
+        if not self._redis and self._redis_available:
+            try:
+                self._redis = redis.from_url(self.redis_url, decode_responses=True)
+                await self._redis.ping()
+                self.logger.info("rate_limit_redis_connected")
+            except Exception as e:
+                self.logger.warning("rate_limit_redis_unavailable", error=str(e))
+                self._redis = None
+                self._redis_available = False
     
     async def disconnect(self):
         """Disconnect from Redis"""
@@ -76,59 +82,87 @@ class RateLimitBackend:
         rule: RateLimitRule
     ) -> RateLimitResult:
         """Check rate limit using sliding window algorithm"""
-        if not self._redis:
+        if not self._redis and self._redis_available:
             await self.connect()
+            
+        if not self._redis:
+            return RateLimitResult(
+                allowed=True,
+                remaining=rule.requests,
+                reset_time=int(time.time()) + rule.window_seconds,
+                rule_id=f"{rule.scope.value}:{rule.requests}:{rule.window_seconds}"
+            )
         
         now = int(time.time())
         window_start = now - rule.window_seconds
         
-        # Use Redis sorted set for sliding window
-        pipe = self._redis.pipeline()
-        
-        # Remove old entries
-        pipe.zremrangebyscore(key, 0, window_start)
-        
-        # Count current requests
-        pipe.zcard(key)
-        
-        # Add current request
-        pipe.zadd(key, {str(now): now})
-        
-        # Set expiration
-        pipe.expire(key, rule.window_seconds * 2)
-        
-        results = await pipe.execute()
-        current_requests = results[1]
-        
-        # Check if rate limit exceeded
-        allowed = current_requests < rule.requests
-        remaining = max(0, rule.requests - current_requests - 1)
-        reset_time = now + rule.window_seconds
-        
-        retry_after = None
-        if not allowed:
-            retry_after = rule.window_seconds
+        try:
+            # Use Redis sorted set for sliding window
+            pipe = self._redis.pipeline()
             
-            # Apply penalty if configured
-            if rule.penalty_seconds:
-                penalty_key = f"{key}:penalty"
-                await self._redis.setex(penalty_key, rule.penalty_seconds, "1")
-        
-        return RateLimitResult(
-            allowed=allowed,
-            remaining=remaining,
-            reset_time=reset_time,
-            retry_after=retry_after,
-            rule_id=f"{rule.scope.value}:{rule.requests}:{rule.window_seconds}"
-        )
+            # Remove old entries
+            pipe.zremrangebyscore(key, 0, window_start)
+            
+            # Count current requests
+            pipe.zcard(key)
+            
+            # Add current request
+            pipe.zadd(key, {str(now): now})
+            
+            # Set expiration
+            pipe.expire(key, rule.window_seconds * 2)
+            
+            results = await pipe.execute()
+            current_requests = results[1]
+            
+            # Check if rate limit exceeded
+            allowed = current_requests < rule.requests
+            remaining = max(0, rule.requests - current_requests - 1)
+            reset_time = now + rule.window_seconds
+            
+            retry_after = None
+            if not allowed:
+                retry_after = rule.window_seconds
+                
+                # Apply penalty if configured
+                if rule.penalty_seconds:
+                    penalty_key = f"{key}:penalty"
+                    await self._redis.setex(penalty_key, rule.penalty_seconds, "1")
+            
+            return RateLimitResult(
+                allowed=allowed,
+                remaining=remaining,
+                reset_time=reset_time,
+                retry_after=retry_after,
+                rule_id=f"{rule.scope.value}:{rule.requests}:{rule.window_seconds}"
+            )
+        except Exception as e:
+            self.logger.warning("rate_limit_redis_error", error=str(e))
+            self._redis_available = False
+            self._redis = None
+            return RateLimitResult(
+                allowed=True,
+                remaining=rule.requests,
+                reset_time=int(time.time()) + rule.window_seconds,
+                rule_id=f"{rule.scope.value}:{rule.requests}:{rule.window_seconds}"
+            )
     
     async def is_penalized(self, key: str) -> bool:
         """Check if client is currently penalized"""
-        if not self._redis:
+        if not self._redis and self._redis_available:
             await self.connect()
+            
+        if not self._redis:
+            return False
         
         penalty_key = f"{key}:penalty"
-        return await self._redis.exists(penalty_key) > 0
+        try:
+            return await self._redis.exists(penalty_key) > 0
+        except Exception as e:
+            self.logger.warning("rate_limit_redis_error_is_penalized", error=str(e))
+            self._redis_available = False
+            self._redis = None
+            return False
 
 
 class TokenBucketRateLimiter:
@@ -146,54 +180,63 @@ class TokenBucketRateLimiter:
         tokens_requested: int = 1
     ) -> RateLimitResult:
         """Check token bucket rate limit"""
-        if not self.backend._redis:
+        if not self.backend._redis and getattr(self.backend, '_redis_available', False):
             await self.backend.connect()
+            
+        if not self.backend._redis:
+            return RateLimitResult(allowed=True, remaining=capacity, reset_time=int(time.time()) + 60)
         
         now = time.time()
         
-        # Get current bucket state
-        bucket_key = f"bucket:{key}"
-        pipe = self.backend._redis.pipeline()
-        
-        pipe.hgetall(bucket_key)
-        pipe.ttl(bucket_key)
-        
-        results = await pipe.execute()
-        bucket_data = results[0] or {}
-        ttl = results[1]
-        
-        # Parse bucket state
-        tokens = float(bucket_data.get("tokens", capacity))
-        last_refill = float(bucket_data.get("last_refill", now))
-        
-        # Refill tokens based on time elapsed
-        time_passed = now - last_refill
-        tokens = min(capacity, tokens + time_passed * refill_rate)
-        
-        # Check if enough tokens
-        allowed = tokens >= tokens_requested
-        remaining = int(tokens) if allowed else 0
-        
-        if allowed:
-            tokens -= tokens_requested
-        
-        # Update bucket state
-        pipe.hset(bucket_key, {
-            "tokens": tokens,
-            "last_refill": now
-        })
-        
-        # Set expiration if not set
-        if ttl == -1:
-            pipe.expire(bucket_key, 3600)  # 1 hour default
-        
-        await pipe.execute()
-        
-        return RateLimitResult(
-            allowed=allowed,
-            remaining=remaining,
-            reset_time=int(now + (capacity - tokens) / refill_rate) if not allowed else int(now + 60),
-        )
+        try:
+            # Get current bucket state
+            bucket_key = f"bucket:{key}"
+            pipe = self.backend._redis.pipeline()
+            
+            pipe.hgetall(bucket_key)
+            pipe.ttl(bucket_key)
+            
+            results = await pipe.execute()
+            bucket_data = results[0] or {}
+            ttl = results[1]
+            
+            # Parse bucket state
+            tokens = float(bucket_data.get("tokens", capacity))
+            last_refill = float(bucket_data.get("last_refill", now))
+            
+            # Refill tokens based on time elapsed
+            time_passed = now - last_refill
+            tokens = min(capacity, tokens + time_passed * refill_rate)
+            
+            # Check if enough tokens
+            allowed = tokens >= tokens_requested
+            remaining = int(tokens) if allowed else 0
+            
+            if allowed:
+                tokens -= tokens_requested
+            
+            # Update bucket state
+            pipe.hset(bucket_key, {
+                "tokens": tokens,
+                "last_refill": now
+            })
+            
+            # Set expiration if not set
+            if ttl == -1:
+                pipe.expire(bucket_key, 3600)  # 1 hour default
+            
+            await pipe.execute()
+            
+            return RateLimitResult(
+                allowed=allowed,
+                remaining=remaining,
+                reset_time=int(now + (capacity - tokens) / refill_rate) if not allowed else int(now + 60),
+            )
+        except Exception as e:
+            self.logger.warning("token_bucket_redis_error", error=str(e))
+            self.backend._redis_available = False
+            self.backend._redis = None
+            return RateLimitResult(allowed=True, remaining=capacity, reset_time=int(time.time()) + 60)
 
 
 class AdaptiveRateLimiter:

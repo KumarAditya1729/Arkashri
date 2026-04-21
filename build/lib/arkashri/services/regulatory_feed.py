@@ -103,7 +103,7 @@ def _parse_rss(xml_text: str, source_key: str) -> list[FeedItem]:
 
 
 async def _fetch_feed(source_key: str) -> list[FeedItem]:
-    """Fetch RSS for a given source, with fallback to a simulated item on error."""
+    """Fetch RSS for a given source and fail closed when the source is unavailable."""
     cfg = FEEDS[source_key]
     try:
         async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
@@ -112,16 +112,7 @@ async def _fetch_feed(source_key: str) -> list[FeedItem]:
             return _parse_rss(resp.text, source_key)
     except Exception as exc:
         logger.warning("feed_fetch_failed", source=source_key, error=str(exc))
-        # Return a synthetic placeholder so the pipeline doesn't fail silently
-        now = datetime.now(timezone.utc)
-        return [FeedItem(
-            external_id=f"{source_key}-placeholder-{now.strftime('%Y%m%d')}",
-            title=f"{cfg['authority']} — Feed temporarily unavailable ({now.strftime('%d %b %Y')})",
-            summary=f"Could not fetch live {cfg['authority']} feed. Check {cfg['fallback_url']} manually.",
-            url=cfg["fallback_url"],
-            published_on=now,
-            content_text=f"Auto-fetch failed: {exc}",
-        )]
+        return []
 
 
 # ── DB persistence ────────────────────────────────────────────────────────────

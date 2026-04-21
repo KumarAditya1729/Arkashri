@@ -6,13 +6,13 @@ Supports Polkadot, Ethereum, and Polygon blockchain networks
 from __future__ import annotations
 
 import json
-import asyncio
-from typing import Dict, List, Optional, Any, Union
+from typing import Any, Dict, List, Optional
 from datetime import datetime
-from pathlib import Path
 import os
 
 import structlog
+
+from arkashri.config import get_settings
 
 _BLOCKCHAIN_ENABLED = os.getenv("ENABLE_BLOCKCHAIN", "false").lower() == "true"
 if _BLOCKCHAIN_ENABLED:
@@ -20,8 +20,6 @@ if _BLOCKCHAIN_ENABLED:
     from web3.middleware import ExtraDataToPOAMiddleware
     from substrateinterface import SubstrateInterface, Keypair
 
-from arkashri.config import get_settings
-from arkashri.logging_config import blockchain_logger
 
 logger = structlog.get_logger(__name__)
 
@@ -128,6 +126,9 @@ class MultiChainBlockchainService:
     
     async def anchor_evidence_multi_chain(self, evidence_hash: str, metadata: Dict) -> Dict:
         """Anchor evidence to multiple blockchain networks"""
+        if not self.connections:
+            raise RuntimeError("No blockchain networks are configured for live anchoring.")
+
         results = {}
         
         for network_name, connection in self.connections.items():
@@ -160,6 +161,10 @@ class MultiChainBlockchainService:
     async def _anchor_to_polkadot(self, substrate: SubstrateInterface, evidence_hash: str, metadata: Dict) -> Dict:
         """Anchor evidence to Polkadot blockchain"""
         try:
+            polkadot_keypair_uri = getattr(self.settings, 'polkadot_keypair_uri', None)
+            if not polkadot_keypair_uri:
+                raise RuntimeError("POLKADOT_KEYPAIR_URI is required for live Polkadot anchoring")
+
             # Create call for anchoring
             call = substrate.compose_call(
                 call_module="System",
@@ -168,7 +173,7 @@ class MultiChainBlockchainService:
             )
             
             # Create extrinsic
-            extrinsic = substrate.create_signed_extrinsic(call, Keypair.create_from_uri('//Alice'))
+            extrinsic = substrate.create_signed_extrinsic(call, Keypair.create_from_uri(polkadot_keypair_uri))
             
             # Submit transaction
             receipt = substrate.submit_extrinsic(extrinsic, wait_for_inclusion=True)
@@ -238,7 +243,10 @@ class MultiChainBlockchainService:
             )
             
             # Get account for transaction
-            account = w3.eth.account.from_key('your_private_key')  # In production, use secure key management
+            private_key = self._private_key_for_network(network_name)
+            if not private_key:
+                raise RuntimeError(f"{network_name.upper()} private key is not configured")
+            account = w3.eth.account.from_key(private_key)
             
             # Build transaction
             transaction = contract.functions.anchorEvidence(
@@ -289,13 +297,16 @@ class MultiChainBlockchainService:
             transaction_data = f"ARKASHRI:{evidence_hash}:{json.dumps(metadata)}"
             
             # Get account
-            account = w3.eth.account.from_key('your_private_key')  # In production, use secure key management
+            private_key = self._private_key_for_network(network_name)
+            if not private_key:
+                raise RuntimeError(f"{network_name.upper()} private key is not configured")
+            account = w3.eth.account.from_key(private_key)
             
             # Build transaction
             transaction = {
-                'to': '0x0000000000000000000000000000000000000000000000000',  # Burn address
+                'to': '0x0000000000000000000000000000000000000000',
                 'value': 0,
-                'data': transaction_data.encode('utf-8').hex(),
+                'data': w3.to_hex(text=transaction_data),
                 'gas': 21000,
                 'gasPrice': w3.eth.gas_price,
                 'nonce': w3.eth.get_transaction_count(account.address)
@@ -355,19 +366,8 @@ class MultiChainBlockchainService:
         return hashlib.sha256(combined.encode()).hexdigest()
     
     def _generate_verification_urls(self, evidence_hash: str, networks: List[str]) -> Dict[str, str]:
-        """Generate verification URLs for each network"""
-        urls = {}
-        base_url = "https://verify.arkashri.com/evidence"
-        
-        for network in networks:
-            if network.lower() == 'polkadot':
-                urls[network] = f"{base_url}/{evidence_hash}?network=polkadot"
-            elif network.lower() == 'ethereum':
-                urls[network] = f"{base_url}/{evidence_hash}?network=ethereum"
-            elif network.lower() == 'polygon':
-                urls[network] = f"{base_url}/{evidence_hash}?network=polygon"
-        
-        return urls
+        """Generate verification URLs for each network."""
+        return {}
     
     async def verify_multi_chain_evidence(self, evidence_hash: str) -> Dict:
         """Verify evidence across multiple blockchain networks"""
@@ -402,39 +402,31 @@ class MultiChainBlockchainService:
     
     async def _verify_polkadot_evidence(self, substrate: SubstrateInterface, evidence_hash: str) -> Dict:
         """Verify evidence on Polkadot blockchain"""
-        try:
-            # Search for evidence anchoring transaction
-            # This is a simplified implementation
-            # In production, you'd search for the specific transaction
-            
-            return {
-                "verified": True,
-                "network": "polkadot",
-                "verification_timestamp": datetime.utcnow().isoformat(),
-                "verification_method": "on_chain_lookup"
-            }
-            
-        except Exception as e:
-            logger.error("polkadot_verification_error", error=str(e))
-            return {"verified": False, "network": "polkadot", "error": str(e)}
+        _ = substrate
+        return {
+            "verified": False,
+            "network": "polkadot",
+            "error": "On-chain verification requires an indexed Polkadot attestation lookup service.",
+            "verification_timestamp": datetime.utcnow().isoformat(),
+        }
     
     async def _verify_evm_evidence(self, w3: Web3, evidence_hash: str, network_name: str) -> Dict:
         """Verify evidence on Ethereum or Polygon blockchain"""
-        try:
-            # Search for transaction containing evidence hash
-            # This is a simplified implementation
-            # In production, you'd use event logs or transaction search
-            
-            return {
-                "verified": True,
-                "network": network_name,
-                "verification_timestamp": datetime.utcnow().isoformat(),
-                "verification_method": "transaction_lookup"
-            }
-            
-        except Exception as e:
-            logger.error("evm_verification_error", network=network_name, error=str(e))
-            return {"verified": False, "network": network_name, "error": str(e)}
+        _ = (w3, evidence_hash)
+        return {
+            "verified": False,
+            "network": network_name,
+            "error": "On-chain verification requires explorer or indexer integration for the configured EVM network.",
+            "verification_timestamp": datetime.utcnow().isoformat(),
+        }
+
+    def _private_key_for_network(self, network_name: str) -> str | None:
+        network_key = network_name.strip().lower()
+        if network_key == "ethereum":
+            return getattr(self.settings, "ethereum_private_key", None)
+        if network_key == "polygon":
+            return getattr(self.settings, "polygon_private_key", None)
+        return None
     
     def _generate_verification_summary(self, evidence_hash: str, results: Dict) -> Dict:
         """Generate verification summary"""

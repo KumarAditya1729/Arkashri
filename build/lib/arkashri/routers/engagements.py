@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,7 +27,15 @@ from arkashri.services.opinion import generate_draft_opinion
 from arkashri.services.seal import generate_audit_seal
 from arkashri.services.esg import upsert_esg_metrics
 from arkashri.services.forensic import upsert_forensic_profile
+from arkashri.services.engagement_workflow import (
+    transition_engagement, WorkflowViolation, EngagementStatus
+)
 from arkashri.dependencies import require_api_client, AuthContext
+
+
+class EngagementStatusUpdate(BaseModel):
+    """Request body for workflow transition endpoint."""
+    status: EngagementStatus
 
 router = APIRouter()
 
@@ -35,7 +45,10 @@ async def create_new_engagement(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> EngagementOut:
-    engagement = await create_engagement(session, payload)
+    try:
+        engagement = await create_engagement(session, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return EngagementOut.model_validate(engagement)
 
 
@@ -44,8 +57,12 @@ async def list_engagements(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.READ_ONLY, ClientRole.REVIEWER})),
 ) -> list[EngagementOut]:
-    """List all engagements ordered by most recent first."""
-    results = list(await session.scalars(select(Engagement).order_by(Engagement.created_at.desc())))
+    """List all engagements for the authenticated tenant, ordered by most recent first."""
+    results = list(await session.scalars(
+        select(Engagement)
+        .where(Engagement.tenant_id == _auth.tenant_id)  # H-4: tenant isolation
+        .order_by(Engagement.created_at.desc())
+    ))
     return [EngagementOut.model_validate(e) for e in results]
 
 
@@ -55,7 +72,11 @@ async def get_engagement_by_id(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.READ_ONLY, ClientRole.REVIEWER})),
 ) -> EngagementOut:
-    engagement = await get_engagement(session, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await get_engagement(session, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
     return EngagementOut.model_validate(engagement)
@@ -68,13 +89,17 @@ async def generate_materiality(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> MaterialityOut:
-    engagement = await get_engagement(session, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await get_engagement(session, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
         
     materiality = await compute_materiality(
         session,
-        engagement_id=engagement_id,
+        engagement_id=eid,
         tenant_id=engagement.tenant_id,
         jurisdiction=engagement.jurisdiction,
         payload=payload
@@ -89,21 +114,28 @@ async def generate_opinion(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> OpinionOut:
-    engagement = await get_engagement(session, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await get_engagement(session, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
         
     opinion = await generate_draft_opinion(
         session,
-        engagement_id=engagement_id,
+        engagement_id=eid,
         tenant_id=engagement.tenant_id,
         jurisdiction=engagement.jurisdiction,
         payload=payload
     )
     return OpinionOut.model_validate(opinion)
 
+from arkashri.services.audit_log import log_system_event
+
 @router.post("/engagements/{engagement_id}/seal", status_code=status.HTTP_201_CREATED)
 async def seal_engagement(
+    request: Request,
     engagement_id: str,
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
@@ -112,7 +144,25 @@ async def seal_engagement(
     Generates the WORM Sealed Audit File (Arkashri_Engagement_Seal) for regulatory submission.
     """
     try:
-        seal_bundle = await generate_audit_seal(session, engagement_id)
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    try:
+        seal_bundle = await generate_audit_seal(session, eid)
+        
+        # 🔗 Audit Proof: Log the seal operation with a cryptographic signature
+        await log_system_event(
+            session,
+            tenant_id=_auth.tenant_id,
+            user_id=_auth.user_id,
+            user_email=_auth.email,
+            action="ENGAGEMENT_SEALED",
+            resource_type="ENGAGEMENT",
+            resource_id=str(eid),
+            request=request,
+            extra_metadata={"seal_hash": seal_bundle.get("seal_hash")}
+        )
+
         return {"status": "success", "message": "Engagement sealed cryptographically.", "seal": seal_bundle}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -131,12 +181,16 @@ async def upsert_engagement_esg(
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> ESGMetricsOut:
     """Ingest or update Environmental, Social & Governance (ESG) metrics for a given engagement."""
-    engagement = await get_engagement(session, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await get_engagement(session, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
     record = await upsert_esg_metrics(
         session,
-        engagement_id=engagement_id,
+        engagement_id=eid,
         tenant_id=engagement.tenant_id,
         payload=payload,
     )
@@ -156,13 +210,67 @@ async def upsert_engagement_forensic(
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> ForensicProfileOut:
     """Ingest or update the Forensic Risk Profile (Benford's law, offshore routing, sanctions probabilities) for a given engagement."""
-    engagement = await get_engagement(session, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    engagement = await get_engagement(session, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
     record = await upsert_forensic_profile(
         session,
-        engagement_id=engagement_id,
+        engagement_id=eid,
         tenant_id=engagement.tenant_id,
         payload=payload,
     )
     return ForensicProfileOut.model_validate(record)
+
+
+@router.post(
+    "/engagements/{engagement_id}/transition",
+    response_model=EngagementOut,
+    summary="Transition Audit State",
+)
+async def transition_engagement_endpoint(
+    request: Request,
+    engagement_id: str,
+    payload: EngagementStatusUpdate,
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+) -> EngagementOut:
+    """
+    Triggers a state transition in the audit workflow engine.
+    Mandatory for SOC 2 Type II evidence.
+    """
+    try:
+        eid = uuid.UUID(engagement_id)
+        engagement = await transition_engagement(
+            session, 
+            engagement_id=eid, 
+            target_status=payload.status,
+            actor_id=str(_auth.user_id)
+        )
+        
+        # 🔗 Audit Proof: Log the transition
+        await log_system_event(
+            session,
+            tenant_id=_auth.tenant_id,
+            user_id=_auth.user_id,
+            user_email=_auth.email,
+            action="WORKFLOW_TRANSITION",
+            resource_type="ENGAGEMENT",
+            resource_id=str(eid),
+            request=request,
+            extra_metadata={
+                "from_status": engagement.status.value, # Status after transition is the new one
+                "target_status": payload.status.value
+            }
+        )
+
+        return EngagementOut.model_validate(engagement)
+    except WorkflowViolation as e:
+        # 400: caller violated workflow rules (wrong transition, gate not met)
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        # 404: engagement not found
+        raise HTTPException(status_code=404, detail=str(e))

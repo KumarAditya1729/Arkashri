@@ -2,15 +2,36 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
-PACK_DIR = ROOT_DIR / "workflow_pack"
+log = logging.getLogger(__name__)
+
+# Resolve workflow_pack directory with multiple fallbacks.
+# This ensures correctness whether running in Docker, dev, or site-packages.
+_CANDIDATES = [
+    Path("/app/workflow_pack"),                        # Docker: always the canonical path
+    Path(__file__).resolve().parents[2] / "workflow_pack",  # Dev-install: repo root
+    Path(__file__).resolve().parents[5] / "workflow_pack",  # pip install: site-packages depth
+    Path(os.environ.get("APP_ROOT", "/app")) / "workflow_pack",  # env override
+]
+
+_resolved = next((p for p in _CANDIDATES if (p / "index.json").exists()), None)
+if _resolved is None:
+    # Log all tried paths so it's easy to debug in Railway logs
+    tried = ", ".join(str(p) for p in _CANDIDATES)
+    raise RuntimeError(
+        f"workflow_pack not found. Tried: [{tried}]. "
+        "Ensure the directory was copied into the Docker image."
+    )
+
+PACK_DIR: Path = _resolved
+log.info("workflow_pack resolved: %s", PACK_DIR)
+
 INDEX_PATH = PACK_DIR / "index.json"
-
-
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))

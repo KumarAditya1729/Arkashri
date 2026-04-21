@@ -19,7 +19,6 @@ from arkashri.schemas import (
     ReportOut,
     ReportGenerateRequest,
     CoverageOut,
-    ScorecardOut,
 )
 from arkashri.services.scorecard import compute_scorecard
 from arkashri.dependencies import require_api_client, AuthContext, _coverage_counts

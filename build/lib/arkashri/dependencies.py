@@ -6,7 +6,7 @@ from typing import Any
 from datetime import datetime, timezone
 
 from fastapi import Depends, Header, HTTPException, Request
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from slowapi import Limiter
@@ -22,7 +22,9 @@ from arkashri.models import (
     IdempotencyRecord,
     AuditRun,
     ApprovalRequest,
+    User,
 )
+from arkashri.services.auth_sessions import load_active_session_from_claims
 from arkashri.services.security import AuthContext, build_system_context, resolve_api_client
 from arkashri.services.jwt_service import decode_token
 from arkashri.services.audit import append_audit_event
@@ -31,26 +33,63 @@ from arkashri.services.realtime import realtime_hub
 settings = get_settings()
 limiter = Limiter(key_func=get_remote_address)
 
-async def get_current_user(request: Request = None) -> dict:
+def serialize_platform_user(user: User) -> dict[str, Any]:
+    return {
+        "id": str(user.id),
+        "sub": str(user.id),
+        "user_id": str(user.id),
+        "email": user.email,
+        "role": user.role.value,
+        "tenant_id": user.tenant_id,
+        "full_name": user.full_name,
+        "initials": user.initials,
+    }
+
+
+async def load_active_user_from_claims(session: AsyncSession, claims: dict[str, Any]) -> User:
+    await load_active_session_from_claims(session, claims)
+
+    user_id = claims.get("user_id") or claims.get("sub")
+    tenant_id = claims.get("tenant_id")
+
+    if not user_id or not tenant_id:
+        raise HTTPException(status_code=401, detail="Token is missing required user claims.")
+
+    try:
+        user_uuid = uuid.UUID(str(user_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="Token user identifier is invalid.") from exc
+
+    user = await session.scalar(
+        select(User).where(
+            User.id == user_uuid,
+            User.tenant_id == tenant_id,
+            User.is_active.is_(True),
+        )
+    )
+    if user is None:
+        raise HTTPException(status_code=401, detail="User account not found or deactivated.")
+
+    return user
+
+
+async def get_current_user(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
     """Get current user from session or JWT token"""
-    if request:
-        # Try session first (only if SessionMiddleware is installed)
-        if 'session' in request.scope:
-            user = request.session.get('user')
-            if user:
-                return user
-        
-        # Try JWT token
-        auth_header = request.headers.get('authorization')
-        if auth_header and auth_header.startswith('Bearer '):
-            token = auth_header.split(' ')[1]
-            try:
-                payload = decode_token(token)
-                return payload
-            except Exception:
-                pass
-    
-    # If no valid token or session is found, reject the request
+    if 'session' in request.scope:
+        user = request.session.get('user')
+        if user:
+            return user
+
+    auth_header = request.headers.get('authorization')
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+        claims = decode_token(token)
+        user = await load_active_user_from_claims(session, claims)
+        return serialize_platform_user(user)
+
     raise HTTPException(
         status_code=401, 
         detail="Not authenticated. Valid JWT Bearer token required."
@@ -196,16 +235,17 @@ def require_api_client(allowed_roles: set[ClientRole] | None = None):
         if authorization and authorization.startswith("Bearer "):
             token = authorization.removeprefix("Bearer ").strip()
             claims = decode_token(token)          # raises HTTP 401 if invalid/expired
-            role_str = claims.get("role", "READ_ONLY")
+            user = await load_active_user_from_claims(session, claims)
+            role_str = user.role.value
             client_role = _JWT_ROLE_MAP.get(role_str, ClientRole.READ_ONLY)
-            tenant_id = claims.get("tenant_id", _tenant_header)
+            tenant_id = user.tenant_id
 
             if allowed_roles and client_role not in allowed_roles:
                 raise HTTPException(status_code=403, detail="Insufficient role privileges")
 
             return AuthContext(
-                client_id=claims.get("user_id", "jwt-user"),
-                client_name=claims.get("full_name", claims.get("email", "JWT User")),
+                client_id=str(user.id),
+                client_name=user.full_name,
                 role=client_role,
                 tenant_id=tenant_id,
             )

@@ -471,6 +471,7 @@ async def _step_requires_pending_approval(session: AsyncSession, run: AuditRun, 
     if redis is None:
         from arq import create_pool
         from arq.connections import RedisSettings
+        from arkashri.config import get_settings
         settings = get_settings()
         redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
         _pool_owned = True

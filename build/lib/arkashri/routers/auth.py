@@ -36,8 +36,7 @@ async def login(request: Request, redirect_uri: str | None = None):
     if not settings.oauth_client_id:
         raise HTTPException(status_code=501, detail="OAuth is not configured on this server.")
     
-    # Normally redirect_uri comes from request.url_for('auth_callback')
-    # but we'll use a hardcoded or provided one for flexibility
+    # Derive the callback URL from the incoming request unless the caller overrides it.
     if not redirect_uri:
         host = request.headers.get("host", "localhost:8000")
         redirect_uri = f"{request.url.scheme}://{host}/api/v1/auth/callback"

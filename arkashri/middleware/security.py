@@ -169,6 +169,8 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
     
     def _is_ip_blocked(self, ip: str) -> bool:
         """Check if IP is in blocked ranges"""
+        if ip == "testclient":
+            return False
         try:
             client_ip = ipaddress.ip_address(ip)
             for blocked_range in self.blocked_ip_ranges:

@@ -41,7 +41,7 @@ class OpenAIInference:
             schema_dict = AuditVerdict.model_json_schema()
             
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model=settings.ai_model_primary,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -83,11 +83,11 @@ async def analyze_step_evidence(
     audit_objective: str = "Verify compliance and integrity.",
 ) -> dict[str, Any]:
     """
-    Submits contextual step evidence to the OpenAI GPT-4o engine requesting
+    Submits contextual step evidence to the configured OpenAI engine requesting
     a deterministic JSON formatted PASS/FAIL verdict.
 
     If the OpenAI API key is unconfigured or the SDK is missing,
-    it falls back to a deterministic manual mock payload to prevent blocking the engine.
+    the response is marked UNVERIFIED so orchestration can treat the AI path as unavailable.
     """
     if not client:
         logger.warning(
@@ -163,12 +163,8 @@ async def generate_contextual_insight(
     actionable suggestion for the AI Assistant sidebar.
     """
     if not client:
-        logger.warning("ai_fabric_disabled", message="OpenAI client unavailable. Returning mock contextual insight.")
-        return {
-            "suggestion": f"I detected a high variance in Q3 OPEX vs industry baseline. Suggesting the addition of a 'Revenue Recognition' Forensic Procedure for {audit_type}.",
-            "confidence": 88.0,
-            "regulatory_bindings": ["ISA 315 (Revised 2019)", "PCAOB AS 2110"]
-        }
+        logger.warning("ai_fabric_disabled", message="OpenAI client unavailable. Contextual insight cannot be generated.")
+        raise RuntimeError("AI contextual insight provider is unavailable.")
 
     display_type = str(audit_type).replace("_", " ").title()
     system_prompt = (
@@ -201,8 +197,4 @@ async def generate_contextual_insight(
 
     except Exception as e:
         logger.error("contextual_insight_failed", error=str(e))
-        return {
-            "suggestion": "AI Assistant is currently unavailable. Please verify manual controls.",
-            "confidence": 0.0,
-            "regulatory_bindings": []
-        }
+        raise RuntimeError("Contextual insight generation failed.") from e

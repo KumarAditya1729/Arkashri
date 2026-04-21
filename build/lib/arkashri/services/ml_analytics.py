@@ -5,13 +5,14 @@ Provides machine learning analytics, anomaly detection, and risk prediction
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Tuple
 from pathlib import Path
 import os
 
 import structlog
+
+from arkashri.config import get_settings
 
 _ML_ENABLED = os.getenv("ENABLE_ML", "false").lower() == "true"
 if _ML_ENABLED:
@@ -20,10 +21,8 @@ if _ML_ENABLED:
     from sklearn.ensemble import IsolationForest, RandomForestClassifier
     from sklearn.preprocessing import StandardScaler
     from sklearn.model_selection import train_test_split
-    from sklearn.metrics import accuracy_score, classification_report
+    from sklearn.metrics import accuracy_score
 
-from arkashri.config import get_settings
-from arkashri.logging_config import analytics_logger
 
 logger = structlog.get_logger(__name__)
 
@@ -35,6 +34,9 @@ class MLAnalyticsService:
         self.models_path = Path(getattr(self.settings, 'ml_model_path', './models/analytics'))
         self.confidence_threshold = getattr(self.settings, 'ml_confidence_threshold', 0.85)
         self.prediction_horizon = getattr(self.settings, 'ml_prediction_horizon_days', 30)
+        self.anomaly_detector = None
+        self.risk_predictor = None
+        self.scaler = None
         
         # Initialize models
         # Skip heavy ML model loading on low-resource envs (ENABLE_ML != true)
@@ -43,7 +45,6 @@ class MLAnalyticsService:
             self.models_path.mkdir(parents=True, exist_ok=True)
             self._load_models()
         else:
-            self.scaler = None
             logger.info("ml_models_skipped", reason="ENABLE_ML not set — running in rule-only mode")
     
     def _load_models(self):
@@ -84,6 +85,8 @@ class MLAnalyticsService:
     async def analyze_audit_patterns(self, audit_data: List[Dict]) -> Dict:
         """Analyze audit patterns and detect anomalies"""
         try:
+            if not _ML_ENABLED or self.anomaly_detector is None:
+                raise RuntimeError("ML analytics are disabled. Configure ENABLE_ML=true with trained models.")
             if not audit_data:
                 return {"anomalies": [], "patterns": [], "insights": []}
             
@@ -125,6 +128,8 @@ class MLAnalyticsService:
     async def predict_risk_factors(self, historical_data: List[Dict]) -> Dict:
         """Predict risk factors for future audits"""
         try:
+            if not _ML_ENABLED or self.risk_predictor is None:
+                raise RuntimeError("Risk prediction is disabled. Configure ENABLE_ML=true with trained models.")
             if not historical_data:
                 return {"predictions": [], "risk_factors": [], "recommendations": []}
             

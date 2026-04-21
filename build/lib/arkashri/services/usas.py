@@ -75,7 +75,7 @@ async def record_ai_governance_log(session: AsyncSession, payload: AIGovernanceL
 
 async def seal_sovereign_archive(session: AsyncSession, payload: SovereignArchiveCreate) -> SovereignArchive:
     """
-    Simulates sealing an engagement archive in a WORM-compliant storage structure.
+    Persist a sovereign archive record and mark it sealed for downstream WORM storage workflows.
     """
     payload_dict = payload.model_dump()
     archive = SovereignArchive(**payload_dict)

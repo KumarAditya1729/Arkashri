@@ -1,19 +1,17 @@
 # pyre-ignore-all-errors
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends, WebSocket
+from fastapi import FastAPI, Depends, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from arkashri.db import get_session
+from arkashri.models import ClientRole
+from arkashri.dependencies import require_api_client
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.sessions import SessionMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 from arq import create_pool
 from arq.connections import RedisSettings
 
 import os
-import uuid
 import structlog
 import asyncio
 
@@ -24,14 +22,12 @@ if os.getenv("ENABLE_TRACING", "false").lower() == "true":
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
     from opentelemetry.sdk.resources import Resource
-    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
     _TRACING_ENABLED = True
 else:
     _TRACING_ENABLED = False
 
 # Prometheus — only if ENABLE_METRICS=true
 if os.getenv("ENABLE_METRICS", "false").lower() == "true":
-    from prometheus_fastapi_instrumentator import Instrumentator
     _METRICS_ENABLED = True
 else:
     _METRICS_ENABLED = False
@@ -39,36 +35,36 @@ else:
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
 import redis.asyncio as redis_async
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 from arkashri.config import get_settings
 from arkashri.routers import router as api_v1_router
 from arkashri.routers.websockets import router as websockets_router
 from arkashri.routers.admin import router as admin_router
-from arkashri.dependencies import limiter
-from arkashri.middleware.idempotency import IdempotencyMiddleware
+from arkashri.routers.engine_status import router as status_router
+from arkashri.routers.standards import router as standards_router
+from arkashri.routers.judgments import router as judgments_router
+from arkashri.routers.client_portal import router as client_portal_router
+from arkashri.routers.reporting import router as reporting_router
+from arkashri.services.health import get_full_health_status
 
 # Import production middleware
-from arkashri.middleware.security import (
-    SecurityHeadersMiddleware,
-    RequestValidationMiddleware,
-    ThreatDetectionMiddleware,
-    RequestSizeMiddleware
-)
-from arkashri.middleware.rate_limiting import ProductionRateLimitMiddleware
+from arkashri.middleware.correlation import CorrelationMiddleware
 from arkashri.middleware.performance import (
     AdvancedCacheMiddleware,
-    CompressionMiddleware,
-    RequestOptimizationMiddleware,
-    ConnectionPoolingMiddleware,
-    MemoryOptimizationMiddleware
+    CompressionMiddleware
 )
-
+from arkashri.middleware.oauth2 import create_oauth2_middleware
+from arkashri.middleware.mfa import create_mfa_middleware
+from arkashri.middleware.enhanced_security import create_enhanced_security_middleware
+from arkashri.middleware.security import (
+    SecurityHeadersMiddleware,
+    RequestSizeMiddleware,
+    RequestValidationMiddleware,
+    ThreatDetectionMiddleware
+)
+from arkashri.middleware.rate_limiting import ProductionRateLimitMiddleware
 # Import production services
-from arkashri.logging_config import setup_logging, security_logger, performance_logger
-from arkashri.utils.error_handling import error_handler, ErrorContext
+from arkashri.logging_config import setup_logging, performance_logger
 from arkashri.db import db_manager
 from arkashri.services.backup import disaster_recovery_service
 
@@ -77,6 +73,7 @@ import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 settings = get_settings()
+settings.validate_runtime_configuration()
 
 # Setup production logging
 setup_logging()
@@ -102,45 +99,60 @@ if _TRACING_ENABLED:
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ── FIX (B): Always run DB health check on startup, regardless of Redis ──
+    # Previously this only ran inside the Redis-success branch, causing every
+    # API request to fail the is_healthy() gate on cold starts with dead Redis.
+    logger.info("startup_db_health_check_begin")
+    await db_manager.health_checker.check_health()
+    logger.info("startup_db_health_check_complete")
+
     # Parse REDIS_URL: redis://host:port/db  →  host + port
-    redis_url = settings.redis_url  # e.g. redis://redis:6379/0
-    try:
-        parts = redis_url.replace("redis://", "").split(":")
-        redis_host = parts[0]
-        redis_port = int(parts[1].split("/")[0]) if len(parts) > 1 else 6379
+    redis_url = settings.redis_url  # e.g. redis://default:pass@redis:6379/0
+    app.state.redis_pool = None
+    if redis_url:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(redis_url)
+        redis_host = parsed.hostname or "localhost"
+        redis_port = parsed.port or 6379
+        redis_password = parsed.password or None
+        redis_username = parsed.username or None
         
-        # Initialize ARQ Pool
-        app.state.redis_pool = await create_pool(
-            RedisSettings(host=redis_host, port=redis_port)
-        )
-        logger.info("Connected to Redis ARQ pool", host=redis_host, port=redis_port)
-        
-        # Initialize FastAPI Cache
-        cache_redis = redis_async.from_url(redis_url, encoding="utf-8", decode_responses=False)
-        FastAPICache.init(RedisBackend(cache_redis), prefix="arkashri-cache")
-        logger.info("Initialized FastAPI Cache with Redis backend")
-        
-        # Initialize database health checker
-        await db_manager.health_checker.check_health()
-        logger.info("Database health checker initialized")
-        
-        # Start background tasks for production
-        if settings.backup_enabled:
-            asyncio.create_task(backup_scheduler())
-        
-        if settings.enable_performance_metrics:
-            asyncio.create_task(metrics_collector())
-        
-    except Exception as e:
-        logger.warning("Failed to connect to Redis (ARQ/Cache will be unavailable)", error=str(e))
-        app.state.redis_pool = None
-        # Ensure FastAPICache is always initialized to prevent AssertionError on cached routes
         try:
-            from fastapi_cache.backends.inmemory import InMemoryBackend
-            FastAPICache.init(InMemoryBackend(), prefix="arkashri-cache")
-            logger.info("Initialized FastAPI Cache with InMemory fallback (Redis unavailable)")
-        except Exception as cache_err:
-            logger.warning("FastAPICache init fallback also failed", error=str(cache_err))
+            # ── FIX (C): conn_timeout=3 — don't stall startup for 10 s when
+            #    Railway Redis is down/asleep. Falls back to InMemory gracefully.
+            app.state.redis_pool = await create_pool(
+                RedisSettings(
+                    host=redis_host,
+                    port=redis_port,
+                    password=redis_password,
+                    username=redis_username,
+                    conn_timeout=3,
+                )
+            )
+            logger.info("Connected to Redis ARQ pool", host=redis_host, port=redis_port)
+            
+            # Initialize FastAPI Cache with Redis
+            cache_redis = redis_async.from_url(redis_url, encoding="utf-8", decode_responses=False)
+            FastAPICache.init(RedisBackend(cache_redis), prefix="arkashri-cache")
+            logger.info("Initialized FastAPI Cache with Redis backend")
+            
+            # Start background tasks for production
+            if settings.backup_enabled:
+                asyncio.create_task(backup_scheduler())
+            
+            if settings.enable_performance_metrics:
+                asyncio.create_task(metrics_collector())
+            
+        except Exception as e:
+            logger.warning("Failed to connect to Redis (ARQ/Cache will be unavailable)", error=str(e))
+            app.state.redis_pool = None
+            # Ensure FastAPICache is always initialized to prevent AssertionError on cached routes
+            try:
+                from fastapi_cache.backends.inmemory import InMemoryBackend
+                FastAPICache.init(InMemoryBackend(), prefix="arkashri-cache")
+                logger.info("Initialized FastAPI Cache with InMemory fallback (Redis unavailable)")
+            except Exception as cache_err:
+                logger.warning("FastAPICache init fallback also failed", error=str(cache_err))
 
     yield
 
@@ -169,13 +181,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from arkashri.middleware.idempotency import IdempotencyMiddleware
+
 # ── Production Middleware Stack ─────────────────────────────────────────────────
+# Correlation ID (Primary entry point for trace propagation)
+app.add_middleware(CorrelationMiddleware)
+
+# Idempotency & Replay Protection (SOC 2 Requirement)
+if settings.redis_url:
+    app.add_middleware(
+        IdempotencyMiddleware,
+        redis_client_getter=lambda: redis_async.from_url(settings.redis_url)
+    )
+
 # Enhanced security middleware
-from arkashri.middleware.oauth2 import create_oauth2_middleware
-from arkashri.middleware.mfa import create_mfa_middleware
-from arkashri.middleware.enhanced_security import create_enhanced_security_middleware
-# Security middleware (WebSocket-friendly configuration)
-# app.add_middleware(SecurityHeadersMiddleware)  # Temporarily disabled due to import issue
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Enhanced security features
 oauth2_middleware = create_oauth2_middleware(app)
@@ -189,13 +209,14 @@ if mfa_middleware:
 enhanced_security_middleware = create_enhanced_security_middleware(app)
 if enhanced_security_middleware:
     app.add_middleware(type(enhanced_security_middleware))
-# app.add_middleware(RequestSizeMiddleware)  # Disabled for WebSocket compatibility
-# app.add_middleware(RequestValidationMiddleware)  # Disabled for WebSocket compatibility
-# app.add_middleware(ThreatDetectionMiddleware)  # Disabled for WebSocket compatibility
 
-# Rate limiting and throttling - Disabled for WebSocket compatibility
-# if settings.redis_url:
-#     app.add_middleware(ProductionRateLimitMiddleware, redis_url=settings.redis_url)
+app.add_middleware(RequestSizeMiddleware)
+app.add_middleware(RequestValidationMiddleware)
+app.add_middleware(ThreatDetectionMiddleware)
+
+# Rate limiting and throttling
+if settings.redis_url:
+    app.add_middleware(ProductionRateLimitMiddleware, redis_url=settings.redis_url)
 
 # Performance optimization - WebSocket-friendly
 if settings.redis_url:
@@ -223,16 +244,34 @@ if settings.enable_compression:
 # app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # app.add_middleware(SlowAPIMiddleware)
 
-# Session middleware - WebSocket-friendly
-# app.add_middleware(SessionMiddleware, secret_key=settings.session_secret_key, max_age=86400)
+# Session middleware — re-enabled (M4 fix)
+# SessionMiddleware is WebSocket-safe; it only reads/writes cookies and does
+# NOT wrap WebSocket upgrades like BaseHTTPMiddleware does.
+from starlette.middleware.sessions import SessionMiddleware
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret_key,
+    max_age=86400,
+    same_site="lax",
+    https_only=(settings.app_env == "production"),
+)
 
 # CORS middleware (WebSocket-friendly)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Arkashri-Tenant",
+        "X-Arkashri-Key",       # M-NEW-6: allow API-key header for browser clients
+        "X-Idempotency-Key",
+        "X-Request-ID",
+        "Accept",
+        "Origin",
+    ],
 )
 
 
@@ -284,15 +323,14 @@ async def cleanup_middleware_resources(app: FastAPI):
 
 
 # ── Enhanced Health endpoint ─────────────────────────────────────────────────
-from arkashri.services.health import get_full_health_status
-from arkashri.routers.engine_status import router as status_router
+
 
 @app.get("/", include_in_schema=False)
 async def root():
     """Root endpoint"""
     return {
         "app": "Arkashri Audit OS",
-        "version": "1.0.0",
+        "version": "2.0.0",  # L-6 FIX: was "1.0.0" — mismatched with FastAPI app declaration
         "status": "active",
         "message": "API is running"
     }
@@ -342,34 +380,27 @@ async def readyz():
             return JSONResponse(status_code=200, content={"ready": True, "db": "ok", "url": masked_url})
     except Exception as e:
         import traceback
-        from arkashri.config import get_settings
-        settings = get_settings()
-        raw_url = settings.database_url
-        masked_url = raw_url.split(":")[0] + "://***:***@" + raw_url.split("@")[-1] if "@" in raw_url else raw_url[:15] + "...(no @)"
-        logger.warning("readyz_db_unreachable", error=str(e))
-        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable", "detail": str(e), "url": masked_url, "trace": traceback.format_exc()})
+        logger.warning("readyz_db_unreachable", error=str(e), trace=traceback.format_exc())  # trace logged server-side only
+        return JSONResponse(status_code=503, content={"ready": False, "db": "unreachable"})
 
-
-# ── Enhanced Metrics endpoint ───────────────────────────────────────────────
+# ── Enhanced Metrics endpoint — ADMIN only ──────────────────────────────────
 @app.get("/metrics/detailed", include_in_schema=False)
-async def detailed_metrics():
-    """Detailed production metrics"""
+async def detailed_metrics(
+    db: AsyncSession = Depends(get_session),
+    _auth = Depends(require_api_client({ClientRole.ADMIN})),  # H-2: requires ADMIN JWT
+):
+    """Internal production metrics — accessible to ADMIN role only."""
     try:
         db_stats = await db_manager.get_connection_stats()
-        
+
         return JSONResponse({
             "database": db_stats,
-            "settings": {
-                "environment": settings.app_env,
-                "auth_enforced": settings.auth_enforced,
-                "backup_enabled": settings.backup_enabled,
-                "performance_monitoring": settings.enable_performance_metrics,
-            },
             "middleware": {
                 "rate_limiting": bool(app.state.redis_pool),
                 "cache": bool(app.state.redis_pool),
                 "compression": settings.enable_compression,
             }
+            # NOTE: sensitive config fields (auth_enforced, backup details) intentionally omitted
         })
     except Exception as e:
         logger.error("metrics_error", error=str(e))
@@ -378,12 +409,8 @@ async def detailed_metrics():
             content={"error": "Failed to collect metrics"}
         )
 
-
-# ── Router Registration ───────────────────────────────────────────────────────
-from arkashri.routers.standards import router as standards_router
-from arkashri.routers.judgments import router as judgments_router
-from arkashri.routers.client_portal import router as client_portal_router
-from arkashri.routers.reporting import router as reporting_router
+from arkashri.routers.blockchain import router as blockchain_router
+from arkashri.routers.multi_chain import router as multi_chain_router
 
 app.include_router(api_v1_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
@@ -392,19 +419,11 @@ app.include_router(reporting_router, prefix="/api/v1")
 app.include_router(standards_router, prefix="/api")
 app.include_router(judgments_router, prefix="/api")
 app.include_router(client_portal_router, prefix="/api")
+app.include_router(blockchain_router, prefix="/api/v1/blockchain")
+app.include_router(multi_chain_router, prefix="/api/blockchain")
 app.include_router(websockets_router)
 
-# Add WebSocket endpoint directly for testing
-@app.websocket("/ws/direct")
-async def direct_websocket(websocket: WebSocket):
-    await websocket.accept()
-    await websocket.send_text("Direct WebSocket connection successful!")
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await websocket.send_text(f"Echo: {data}")
-    except Exception as e:
-        print(f"Direct WebSocket error: {e}")
+# NOTE: /ws/direct removed — unauthenticated echo endpoint is a security risk in production.
 
 # ── Instrumentation & Metrics ──────────────────────────────────────────────────
 # Temporarily disabled for WebSocket testing
@@ -460,3 +479,4 @@ async def direct_websocket(websocket: WebSocket):
 
 # app.add_middleware(StructlogMiddleware)
 # Fixed AsyncSession import issue
+# Cache buster
