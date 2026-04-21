@@ -14,8 +14,9 @@ dockerfilePath = "Dockerfile"
 # Workers=1 keeps RAM usage low on Railway's free/hobby tier.
 # Bump to 2-4 once you upgrade the plan.
 
-# Run migrations and start the application server
-startCommand = "alembic upgrade head && gunicorn arkashri.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 300 --keep-alive 2 --access-logfile - --error-logfile -"
+# Run migrations before starting the application server
+preDeployCommand = "alembic upgrade head"
+startCommand = "gunicorn arkashri.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 300 --keep-alive 2 --access-logfile - --error-logfile -"
 
 healthcheckPath = "/readyz"
 healthcheckTimeout = 300
