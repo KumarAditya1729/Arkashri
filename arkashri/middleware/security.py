@@ -146,7 +146,8 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
                 "Malicious URL parameters detected",
                 {"ip": client_ip, "url": str(request.url)}
             )
-            raise HTTPException(status_code=400, detail="Invalid request")
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=400, content={"detail": "Invalid request"})
         
         # For POST/PUT requests, validate body content
         if request.method in ["POST", "PUT", "PATCH"]:
@@ -392,9 +393,10 @@ class RequestSizeMiddleware(BaseHTTPMiddleware):
                     max_size=self.settings.max_request_size,
                     ip=self._get_client_ip(request)
                 )
-                raise HTTPException(
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
                     status_code=413,
-                    detail=f"Request too large. Max size: {self.settings.max_request_size} bytes"
+                    content={"detail": f"Request too large. Max size: {self.settings.max_request_size} bytes"}
                 )
         
         return await call_next(request)

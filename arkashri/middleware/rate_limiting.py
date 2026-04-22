@@ -353,6 +353,10 @@ class ProductionRateLimitMiddleware(BaseHTTPMiddleware):
         user_id = request.headers.get("X-Arkashri-User-ID", "anonymous")
         endpoint = self._get_endpoint_category(request.url.path)
         
+        # Bypass Railway internal proxy IPs to prevent global rate limiting of the entire app
+        if client_ip.startswith("100.64."):
+            return await call_next(request)
+
         # Check penalties first
         penalty_key = f"penalty:{client_ip}"
         if await self.backend.is_penalized(penalty_key):
@@ -362,9 +366,10 @@ class ProductionRateLimitMiddleware(BaseHTTPMiddleware):
                 action="rate_limit_penalized"
             )
             
-            raise HTTPException(
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
                 status_code=429,
-                detail="Rate limit penalty active. Please try again later.",
+                content={"detail": "Rate limit penalty active. Please try again later."},
                 headers={"Retry-After": "300"}
             )
         
@@ -464,9 +469,10 @@ class ProductionRateLimitMiddleware(BaseHTTPMiddleware):
                     action="rate_limit_exceeded"
                 )
                 
-                raise HTTPException(
+                from fastapi.responses import JSONResponse
+                return JSONResponse(
                     status_code=429,
-                    detail="Rate limit exceeded",
+                    content={"detail": "Rate limit exceeded"},
                     headers={
                         "X-RateLimit-Limit": str(rule.requests),
                         "X-RateLimit-Remaining": str(result.remaining),
