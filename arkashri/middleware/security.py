@@ -108,6 +108,10 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next) -> Response:
         """Validate and sanitize requests"""
+        # ── Always allow health/readiness probes through — never block them ──
+        if request.url.path in {"/readyz", "/health", "/"}:
+            return await call_next(request)
+
         client_ip = self._get_client_ip(request)
         user_agent = request.headers.get("User-Agent", "").lower()
         
@@ -169,16 +173,17 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
     
     def _is_ip_blocked(self, ip: str) -> bool:
         """Check if IP is in blocked ranges"""
-        if ip == "testclient":
-            return False
+        if ip in {"testclient", "unknown", ""}:
+            return False  # Never block Railway internals or unknown proxy IPs
         try:
             client_ip = ipaddress.ip_address(ip)
             for blocked_range in self.blocked_ip_ranges:
                 if client_ip in blocked_range:
                     return True
         except ValueError:
-            # Invalid IP format
-            return True
+            # Invalid IP format — don't block, just let it through
+            # Railway proxy sometimes sends non-standard values
+            return False
         return False
     
     def _is_suspicious_user_agent(self, user_agent: str) -> bool:
