@@ -120,7 +120,8 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
                 "Blocked IP access attempt",
                 {"ip": client_ip, "user_agent": user_agent}
             )
-            raise HTTPException(status_code=403, detail="Access denied")
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=403, content={"detail": "Access denied"})
         
         # Check suspicious user agents
         if self._is_suspicious_user_agent(user_agent):
@@ -133,9 +134,10 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
         # Validate request size
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > self.settings.max_request_size:
-            raise HTTPException(
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
                 status_code=413,
-                detail=f"Request too large. Max size: {self.settings.max_request_size} bytes"
+                content={"detail": f"Request too large. Max size: {self.settings.max_request_size} bytes"}
             )
         
         # Validate URL parameters
@@ -154,7 +156,8 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
                     "Malicious request body detected",
                     {"ip": client_ip, "method": request.method, "path": request.url.path}
                 )
-                raise HTTPException(status_code=400, detail="Invalid request content")
+                from fastapi.responses import JSONResponse
+                return JSONResponse(status_code=400, content={"detail": "Invalid request content"})
         
         return await call_next(request)
     
@@ -220,13 +223,18 @@ class ThreatDetectionMiddleware(BaseHTTPMiddleware):
         client_ip = self._get_client_ip(request)
         current_time = time.time()
         
+        # Bypass for internal Railway IPs to prevent proxy ban
+        if request.url.path in {"/readyz", "/health", "/"} or client_ip.startswith("100.64.") or client_ip in {"unknown", "testclient"}:
+            return await call_next(request)
+            
         # Check if IP is blocked
         if client_ip in self.blocked_ips:
             security_logger.log_suspicious_activity(
                 "Blocked IP attempted access",
                 {"ip": client_ip, "path": request.url.path}
             )
-            raise HTTPException(status_code=403, detail="Access denied")
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=403, content={"detail": "Access denied"})
         
         # Track request patterns
         self._track_request_pattern(client_ip, request, current_time)
