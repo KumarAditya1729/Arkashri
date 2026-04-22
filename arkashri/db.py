@@ -21,20 +21,21 @@ class Base(DeclarativeBase):
 settings = get_settings()
 
 # Production-ready engine configuration
+# Neon PostgreSQL (serverless) — small pool, fast timeout, pooler-compatible
 engine = create_async_engine(
     settings.database_url,
     pool_pre_ping=True,
-    pool_size=settings.db_pool_size,
-    max_overflow=settings.db_max_overflow,
+    pool_size=min(settings.db_pool_size, 5),     # Neon free tier: max 10 connections
+    max_overflow=min(settings.db_max_overflow, 5),
     pool_timeout=settings.db_pool_timeout,
-    pool_recycle=settings.db_pool_recycle,
+    pool_recycle=300,    # 5 min — Neon drops idle connections at ~5 min
     echo=settings.db_echo,
-    # Additional production settings
     connect_args={
-        "command_timeout": 30,
+        "command_timeout": 10,        # Fail fast — don't block worker for 30s
+        "statement_cache_size": 0,    # Required for Neon/PgBouncer connection pooler
         "server_settings": {
             "application_name": "arkashri_api",
-            "jit": "off",  # Disable JIT for simpler query planning
+            "jit": "off",             # Disable JIT for faster simple queries
         }
     } if "postgresql" in settings.database_url else {},
 )

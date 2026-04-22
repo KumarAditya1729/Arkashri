@@ -10,7 +10,7 @@ dockerfilePath = "Dockerfile"
 # Runs the FastAPI app via Gunicorn + UvicornWorker.
 
 preDeployCommand = "alembic upgrade head"
-startCommand = "sh -c 'exec gunicorn arkashri.main:app -w 1 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 300 --keep-alive 2 --access-logfile - --error-logfile -'"
+startCommand = "sh -c 'exec gunicorn arkashri.main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120 --keep-alive 5 --preload --worker-tmp-dir /dev/shm --access-logfile - --error-logfile -'"
 
 healthcheckPath = "/readyz"
 healthcheckTimeout = 300
