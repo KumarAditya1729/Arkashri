@@ -94,7 +94,6 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
         # legitimate client traffic.
         self.blocked_ip_ranges = [
             ipaddress.IPv4Network('0.0.0.0/8'),      # RFC 1700 — this host
-            ipaddress.IPv4Network('100.64.0.0/10'),  # Carrier-grade NAT (RFC 6598)
             ipaddress.IPv4Network('169.254.0.0/16'), # Link-local (RFC 3927)
             ipaddress.IPv4Network('224.0.0.0/4'),    # Multicast
             ipaddress.IPv4Network('240.0.0.0/4'),    # Reserved
