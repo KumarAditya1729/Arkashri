@@ -38,10 +38,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # generate a random nonce per request and pass it to templates.
         csp = (
             "default-src 'self'; "
-            "script-src 'self'; "
-            "style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https:; "
-            "font-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https: https://cdn.jsdelivr.net https://fastapi.tiangolo.com; "
+            "font-src 'self' data: https://cdn.jsdelivr.net; "
             "connect-src 'self' wss:; "
             "frame-ancestors 'none'; "
             "base-uri 'self'; "

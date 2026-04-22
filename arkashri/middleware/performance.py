@@ -138,9 +138,10 @@ class AdvancedCacheMiddleware(BaseHTTPMiddleware):
                 # Parse cached response data
                 data = ujson.loads(cached_data)
                 
+                from fastapi import Response
                 # Reconstruct response
-                response = JSONResponse(
-                    content=data["content"],
+                response = Response(
+                    content=data["content"].encode('utf-8') if isinstance(data["content"], str) else b"",
                     status_code=data["status_code"],
                     headers=data["headers"]
                 )
