@@ -262,20 +262,34 @@ class CompressionMiddleware(BaseHTTPMiddleware):
         
         # Compress response
         if hasattr(response, 'body') and response.body:
-            compressed_body = gzip.compress(response.body)
+            original_body = response.body
+            compressed_body = gzip.compress(original_body)
             
             # Only use compressed version if it's smaller
-            if len(compressed_body) < len(response.body):
-                response.headers["Content-Encoding"] = "gzip"
-                response.headers["Content-Length"] = str(len(compressed_body))
-                response.body = compressed_body
+            if len(compressed_body) < len(original_body):
+                
+                # We must recreate the response because response.body is generally read-only
+                # or updating it might not update headers correctly.
+                headers = dict(response.headers)
+                headers["Content-Encoding"] = "gzip"
+                headers["Content-Length"] = str(len(compressed_body))
+                
+                # Create a new Response with the compressed body
+                compressed_response = Response(
+                    content=compressed_body,
+                    status_code=response.status_code,
+                    headers=headers,
+                    media_type=response.media_type
+                )
                 
                 self.logger.info(
                     "response_compressed",
-                    original_size=len(response.body),
+                    original_size=len(original_body),
                     compressed_size=len(compressed_body),
-                    compression_ratio=len(compressed_body) / len(response.body)
+                    compression_ratio=len(compressed_body) / len(original_body)
                 )
+                
+                return compressed_response
         
         return response
 
