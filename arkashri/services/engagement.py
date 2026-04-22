@@ -80,11 +80,11 @@ async def create_engagement(session: AsyncSession, payload: EngagementCreate) ->
     import json
     from sqlalchemy import select
 
-    docs = await session.scalars(
+    docs = (await session.scalars(
         select(RegulatoryDocument)
         .where(RegulatoryDocument.jurisdiction == payload.jurisdiction)
         .where(RegulatoryDocument.is_promoted.is_(True))
-    )
+    )).all()
     
     sa_versions = {}
     for doc in docs:
