@@ -398,9 +398,6 @@ async def detailed_metrics(
             content={"error": "Failed to collect metrics"}
         )
 
-from arkashri.routers.blockchain import router as blockchain_router
-from arkashri.routers.multi_chain import router as multi_chain_router
-
 app.include_router(api_v1_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(status_router, prefix="/api/v1")
@@ -408,8 +405,6 @@ app.include_router(reporting_router, prefix="/api/v1")
 app.include_router(standards_router, prefix="/api")
 app.include_router(judgments_router, prefix="/api")
 app.include_router(client_portal_router, prefix="/api")
-app.include_router(blockchain_router, prefix="/api/v1/blockchain")
-app.include_router(multi_chain_router, prefix="/api/blockchain")
 app.include_router(websockets_router)
 
 # NOTE: /ws/direct removed — unauthenticated echo endpoint is a security risk in production.
