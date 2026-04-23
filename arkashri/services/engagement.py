@@ -75,31 +75,37 @@ async def create_engagement(session: AsyncSession, payload: EngagementCreate) ->
     await session.refresh(engagement)
 
     # Automatically capture the active regulatory ruleset (RulesSnapshot)
-    from arkashri.models import RulesSnapshot, RegulatoryDocument
-    import hashlib
-    import json
-    from sqlalchemy import select
+    # This is optional — engagement creation succeeds even if snapshot fails
+    try:
+        from arkashri.models import RulesSnapshot, RegulatoryDocument
+        import hashlib
+        import json
+        from sqlalchemy import select
 
-    docs = (await session.scalars(
-        select(RegulatoryDocument)
-        .where(RegulatoryDocument.jurisdiction == payload.jurisdiction)
-        .where(RegulatoryDocument.is_promoted.is_(True))
-    )).all()
-    
-    sa_versions = {}
-    for doc in docs:
-        key = f"{doc.authority}:{doc.external_id}"
-        sa_versions[key] = doc.content_hash
+        docs = (await session.scalars(
+            select(RegulatoryDocument)
+            .where(RegulatoryDocument.jurisdiction == payload.jurisdiction)
+            .where(RegulatoryDocument.is_promoted.is_(True))
+        )).all()
+        
+        sa_versions = {}
+        for doc in docs:
+            key = f"{doc.authority}:{doc.external_id}"
+            sa_versions[key] = doc.content_hash
 
-    snapshot_hash = hashlib.sha256(json.dumps(sa_versions, sort_keys=True).encode()).hexdigest()
+        snapshot_hash = hashlib.sha256(json.dumps(sa_versions, sort_keys=True).encode()).hexdigest()
 
-    snapshot = RulesSnapshot(
-        engagement_id=engagement.id,
-        snapshot_hash=snapshot_hash,
-        sa_versions=sa_versions,
-    )
-    session.add(snapshot)
-    await session.commit()
+        snapshot = RulesSnapshot(
+            engagement_id=engagement.id,
+            snapshot_hash=snapshot_hash,
+            sa_versions=sa_versions,
+        )
+        session.add(snapshot)
+        await session.commit()
+    except Exception as snap_exc:
+        logger.warning("rules_snapshot_failed", error=str(snap_exc), engagement_id=str(engagement.id))
+        # Roll back only the snapshot, not the engagement itself
+        await session.rollback()
 
     return engagement
 
