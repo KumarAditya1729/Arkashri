@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+if [[ -z "${staged_files}" ]]; then
+  exit 0
+fi
+
+blocked_pattern='(^|/)(\.DS_Store|.*\.db(-.*)?|.*\.sqlite3?|.*\.sqlite-(shm|wal)|.*\.log|.*\.out|.*\.err|.*\.pid(\.lock)?|.*\.trace|.*\.har|test_websocket\.html|run_e2e_local\.py|frontend\.pid|frontend2\.pid)$|(^|/)(logs|scratch|backups|tmp|temp|uploads)/'
+
+blocked_files="$(printf '%s\n' "${staged_files}" | grep -E "${blocked_pattern}" || true)"
+
+if [[ -n "${blocked_files}" ]]; then
+  cat <<'EOF'
+Commit blocked by repo hygiene policy.
+
+These files are local runtime, debug, or sensitive artifacts and must not be committed:
+EOF
+  printf '%s\n' "${blocked_files}" | sed 's/^/  - /'
+  cat <<'EOF'
+
+Move durable tests into `tests/`, keep one-off experiments in ignored local paths, and remove staged junk with:
+  git restore --staged <path>
+EOF
+  exit 1
+fi

@@ -30,6 +30,7 @@ from arkashri.services.forensic import upsert_forensic_profile
 from arkashri.services.engagement_workflow import (
     transition_engagement, WorkflowViolation, EngagementStatus
 )
+from arkashri.services.audit_log import log_system_event
 from arkashri.dependencies import require_api_client, AuthContext
 
 
@@ -130,8 +131,6 @@ async def generate_opinion(
         payload=payload
     )
     return OpinionOut.model_validate(opinion)
-
-from arkashri.services.audit_log import log_system_event
 
 @router.post("/engagements/{engagement_id}/seal", status_code=status.HTTP_201_CREATED)
 async def seal_engagement(

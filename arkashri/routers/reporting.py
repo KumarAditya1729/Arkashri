@@ -1,7 +1,9 @@
 # pyre-ignore-all-errors
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, status
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
@@ -22,8 +24,23 @@ from arkashri.schemas import (
 )
 from arkashri.services.scorecard import compute_scorecard
 from arkashri.dependencies import require_api_client, AuthContext, _coverage_counts
+from arkashri.services.india_reporting import IndiaReportError, generate_india_statutory_report
+from arkashri.services.india_udin import (
+    UDINError,
+    generate_report_udin,
+    get_report_udin,
+    verify_public_report,
+)
 
 router = APIRouter()
+
+
+class IndiaStatutoryReportRequest(BaseModel):
+    allow_draft: bool = False
+
+
+class GenerateUDINRequest(BaseModel):
+    member_id: str | None = None
 
 @router.post("/generate", response_model=ReportOut, status_code=status.HTTP_202_ACCEPTED)
 async def generate_audit_report(
@@ -185,6 +202,108 @@ async def generate_audit_report(
     session.add(job)
     await session.commit()
     return ReportOut.model_validate(job)
+
+
+@router.post(
+    "/engagements/{engagement_id}/statutory-audit",
+    response_model=ReportOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_india_statutory_audit_report(
+    engagement_id: str,
+    payload: IndiaStatutoryReportRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+) -> ReportOut:
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+
+    try:
+        report = await generate_india_statutory_report(
+            session,
+            engagement_id=eid,
+            tenant_id=auth.tenant_id,
+            allow_draft=payload.allow_draft,
+        )
+    except IndiaReportError as exc:
+        detail = str(exc)
+        status_code = 400
+        if "not found" in detail.lower():
+            status_code = 404
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    return ReportOut.model_validate(report)
+
+
+@router.post(
+    "/reports/{report_id}/udin/generate",
+    response_model=ReportOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_udin_for_report(
+    report_id: str,
+    payload: GenerateUDINRequest,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+) -> ReportOut:
+    try:
+        rid = uuid.UUID(report_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid report_id UUID")
+
+    try:
+        report = await generate_report_udin(
+            session,
+            report_id=rid,
+            tenant_id=auth.tenant_id,
+            generated_by=auth.client_name,
+            member_id=payload.member_id,
+        )
+    except UDINError as exc:
+        detail = str(exc)
+        status_code = 400
+        if "not found" in detail.lower():
+            status_code = 404
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    return ReportOut.model_validate(report)
+
+
+@router.get(
+    "/reports/{report_id}/udin",
+)
+async def get_udin_for_report(
+    report_id: str,
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> dict[str, Any]:
+    try:
+        rid = uuid.UUID(report_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid report_id UUID")
+
+    try:
+        udin = await get_report_udin(
+            session,
+            report_id=rid,
+            tenant_id=auth.tenant_id,
+        )
+    except UDINError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"report_id": report_id, "udin": udin}
+
+
+@router.get(
+    "/public/report-verify/{report_hash}",
+)
+async def public_verify_report(
+    report_hash: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    try:
+        return await verify_public_report(session, report_hash=report_hash)
+    except UDINError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 # ─── Automation Score ─────────────────────────────────────────────────────────
@@ -360,9 +479,9 @@ async def get_scorecard(
     return asdict(stats)
 
 
-# ─── Wildcard list route — must be LAST to avoid shadowing /metrics/* paths ────
+# ─── Tenant-scoped list route. Keep this explicit to avoid shadowing siblings. ───
 
-@router.get("/{tenant_id}/{jurisdiction}", response_model=list[ReportOut])
+@router.get("/tenant/{tenant_id}/{jurisdiction}", response_model=list[ReportOut])
 async def list_reports(
     tenant_id: str,
     jurisdiction: str,

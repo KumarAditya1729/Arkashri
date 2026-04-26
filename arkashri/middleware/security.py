@@ -10,7 +10,7 @@ import re
 import time
 from typing import Dict, Set
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 import structlog
 
@@ -38,7 +38,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # generate a random nonce per request and pass it to templates.
         csp = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "script-src 'self' https://cdn.jsdelivr.net; "
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
             "img-src 'self' data: https: https://cdn.jsdelivr.net https://fastapi.tiangolo.com; "
             "font-src 'self' data: https://cdn.jsdelivr.net; "

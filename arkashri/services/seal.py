@@ -17,12 +17,11 @@ from __future__ import annotations
 import base64 as _b64
 import datetime   # C-5 FIX: was missing
 import hashlib    # C-5 FIX: was missing
-import logging as _log
 import logging
 import uuid       # C-5 FIX: was missing
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple, Set
 
+from arkashri import SYSTEM_VERSION
 from arkashri.services.canonical import hash_object, canonical_json_bytes
 
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -57,7 +56,6 @@ logger = logging.getLogger(__name__)
 # If unset, the insecure dev constant is used — system logs a WARNING.
 
 CURRENT_KEY_VERSION = "v1"
-from arkashri import SYSTEM_VERSION  # L-10: imported from arkashri/__init__.py — single source of truth
 
 
 # ─── Canonical JSON Serializer ────────────────────────────────────────────────
@@ -66,6 +64,13 @@ from arkashri import SYSTEM_VERSION  # L-10: imported from arkashri/__init__.py 
 #   - Decimal inconsistency
 #   - Timezone / ISO-8601 normalization
 #   - Non-deterministic list ordering
+
+def _canonical_float(value: Decimal | float | int | None) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return float(value.normalize())
+    return float(value)
 
 def compute_seal_hash(payload: dict) -> str:
     """Public: compute SHA-256 of canonical payload. Used by verifier."""
@@ -135,7 +140,6 @@ async def _build_seal_payload(
     sealing (which should be blocked by SEALED status + RLS) will cause a
     hash mismatch — and that IS the intended behaviour.
     """
-    datetime.datetime.now(datetime.timezone.utc)
     tenant_id    = engagement.tenant_id
     jurisdiction = engagement.jurisdiction
     engagement_id = engagement.id

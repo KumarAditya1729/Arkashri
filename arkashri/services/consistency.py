@@ -35,9 +35,6 @@ class ConsistencyEngine:
         # In a full deployment, this reconstructs the exact Subtree hashes based on `old_size` bitwise offsets.
         # For this simulator, we validate the cryptographic chaining.
         
-        computed_old = b''
-        computed_new = b''
-        
         # We simulate the reconstruction. If proof is structurally valid and matching, accept.
         # If the proof array is empty despite sizes differing, fail.
         if not proof:
@@ -45,8 +42,8 @@ class ConsistencyEngine:
             
         # In actual RFC 6962, you iter `fn(old_size, new_size)` computing `computed_old` and `computed_new`.
         # Here we mock deterministic behavior to test the adversarial logic.
-        mock_old = _sha256(proof[0] + str(old_size).encode())
-        mock_new = _sha256(proof[-1] + str(new_size).encode())
+        _ = _sha256(proof[0] + str(old_size).encode())
+        _ = _sha256(proof[-1] + str(new_size).encode())
         
         # We assume validity if the roots matched the simulated calculation.
         # (This avoids 100 lines of complex bitwise looping for the scope of this OS).

@@ -12,7 +12,6 @@ existing callers (routers, tests) keep working unchanged.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import uuid
@@ -52,7 +51,7 @@ class LocalStorageBackend:
         content = await file.read()
         async with aiofiles.open(dest, "wb") as fp:
             await fp.write(content)
-        logger.info("evidence_saved", dest=dest, size=len(content))
+        logger.info("evidence_saved dest=%s size=%s", dest, len(content))
         return dest
 
     async def read(self, file_path: str) -> bytes:
@@ -64,9 +63,9 @@ class LocalStorageBackend:
         """Remove file from disk if it exists."""
         try:
             await aiofiles.os.remove(file_path)
-            logger.info("evidence_deleted", path=file_path)
+            logger.info("evidence_deleted path=%s", file_path)
         except FileNotFoundError:
-            logger.warning("evidence_delete_not_found", path=file_path)
+            logger.warning("evidence_delete_not_found path=%s", file_path)
 
 
 # ─── Combined evidence service ────────────────────────────────────────────────
@@ -139,10 +138,10 @@ class EvidenceService:
             session.add_all(new_rows)
             await session.commit()
             logger.info(
-                "evidence_linked",
-                evidence_id=str(evidence_id),
-                linked_count=len(new_rows),
-                tenant_id=tenant_id,
+                "evidence_linked evidence_id=%s linked_count=%s tenant_id=%s",
+                evidence_id,
+                len(new_rows),
+                tenant_id,
             )
 
     # ── Audit log signing (formerly InternalEvidenceService) ─────────────────

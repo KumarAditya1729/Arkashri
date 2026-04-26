@@ -4,11 +4,9 @@ import uuid
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from arkashri.models import SystemAuditLog
+from arkashri.services.evidence import evidence_service
 
 logger = structlog.get_logger("services.audit_log")
-
-from arkashri.services.evidence import evidence_service
 
 async def log_system_event(
     db: AsyncSession,

@@ -138,6 +138,14 @@ async def query_knowledge(
             "audit_type": audit_type,
         }
     )
+    stmt = (
+        select(KnowledgeChunk, KnowledgeDocument)
+        .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
+        .where(
+            KnowledgeDocument.jurisdiction == jurisdiction,
+            KnowledgeDocument.is_active.is_(True),
+        )
+    )
 
     # Optimization: Filter by keywords in SQL to reduce OOM risk
     # Only load top 500 potential matches into memory for ranking
