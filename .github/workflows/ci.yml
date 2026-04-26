@@ -31,11 +31,12 @@ jobs:
 
       - name: Run pytest
         env:
-          DATABASE_URL: sqlite+aiosqlite:///./ci.db
+          APP_ENV: test
           REDIS_URL: redis://localhost:6379/0
-          JWT_SECRET_KEY: ci-secret-key
-          SECRET_KEY: ci-secret-key
-          ENVIRONMENT: test
+          JWT_SECRET_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          SESSION_SECRET_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          SECRET_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          SEAL_KEY_V1: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
           SENTRY_DSN: ""
         run: pytest tests
 
