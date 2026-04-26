@@ -4,6 +4,11 @@ FROM python:3.11-slim as builder
 WORKDIR /app
 COPY . .
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # We'll install to a virtualenv for isolation so we can easily copy it to the final stage.
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -16,7 +21,17 @@ RUN pip install --upgrade pip && \
 FROM python:3.11-slim as runner
 
 # Create a non-root user
-RUN groupadd -r arkashri && useradd -r -g arkashri -s /sbin/nologin -c "Arkashri Application User" arkashri
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-dejavu-core \
+    libffi8 \
+    libgdk-pixbuf-2.0-0 \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
+    libpq5 \
+    shared-mime-info \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r arkashri \
+    && useradd -r -g arkashri -s /sbin/nologin -c "Arkashri Application User" arkashri
 
 WORKDIR /app
 

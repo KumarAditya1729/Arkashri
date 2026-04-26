@@ -99,6 +99,9 @@ async def test_india_statutory_report_blocks_when_workspace_not_ready(async_clie
 @pytest.mark.asyncio
 async def test_india_statutory_report_uses_workspace_tally_and_gst(async_client, db_session, monkeypatch) -> None:
     monkeypatch.setattr("arkashri.dependencies.settings.auth_enforced", False)
+    from arkashri.services.object_storage import object_storage_service
+    monkeypatch.setattr(object_storage_service.settings, "upload_dir", "/tmp/arkashri-test-report-artifacts")
+
     engagement = Engagement(
         tenant_id="default_tenant",
         jurisdiction="IN",
@@ -158,10 +161,41 @@ async def test_india_statutory_report_uses_workspace_tally_and_gst(async_client,
     )
 
     assert response.status_code == 201
-    payload = response.json()["report_payload"]
+    report_body = response.json()
+    report_id = report_body["id"]
+    payload = report_body["report_payload"]
     assert payload["report_type"] == "INDIA_STATUTORY_AUDIT"
     assert payload["is_draft"] is False
     assert payload["workspace_readiness"]["is_report_ready"] is True
     assert "gstr1_vs_books" in payload["report_sections"]["gst_highlights"]
     assert "trial_balance" in payload["report_sections"]["tally_import_summary"]
     assert payload["report_sections"]["caro_annexure"]
+
+    html_artifact = await async_client.get(f"/api/v1/reporting/reports/{report_id}/artifact")
+    assert html_artifact.status_code == 200
+    html_payload = html_artifact.json()
+    assert html_payload["content_type"] == "text/html; charset=utf-8"
+    assert "Independent Auditor's Report" in html_payload["artifact_html"]
+    assert "Report Ready Private Limited" in html_payload["artifact_html"]
+    assert html_payload["verification_url"].endswith(report_body["report_hash"])
+    assert html_payload["report_hash"] == report_body["report_hash"]
+    assert html_payload["qr_code_data_url"].startswith("data:image/png;base64,")
+
+    pdf_artifact = await async_client.get(f"/api/v1/reporting/reports/{report_id}/artifact?format=pdf")
+    assert pdf_artifact.status_code in {200, 503}
+    if pdf_artifact.status_code == 200:
+        assert pdf_artifact.headers["content-type"].startswith("application/pdf")
+        assert pdf_artifact.content.startswith(b"%PDF")
+    else:
+        assert "PDF rendering is unavailable" in pdf_artifact.json()["detail"]
+
+    persisted_artifact = await async_client.post(f"/api/v1/reporting/reports/{report_id}/artifact/persist")
+    assert persisted_artifact.status_code == 200
+    artifact_record = persisted_artifact.json()["artifact"]
+    assert artifact_record["provider"] == "local"
+    assert artifact_record["report_hash"] == report_body["report_hash"]
+    assert artifact_record["uri"].endswith(".html")
+
+    await db_session.refresh(engagement)
+    stored_artifacts = engagement.state_metadata["report_artifacts"][report_id]
+    assert stored_artifacts["html"]["uri"] == artifact_record["uri"]

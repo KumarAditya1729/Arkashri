@@ -17,9 +17,11 @@ from arkashri.services.client_query_workflow import (
     create_client_approval,
     create_client_query,
     get_client_portal_workflow,
+    record_client_workflow_notification,
     respond_to_client_query,
     update_client_query,
 )
+from arkashri.services.whatsapp import send_whatsapp_message
 from arkashri.models import (
     Engagement, 
     ClientPortalAccess, 
@@ -225,6 +227,9 @@ class ClientQueryCreateRequest(BaseModel):
     priority: str = Field(default="MEDIUM", min_length=1, max_length=32)
     due_at: str | None = None
     requested_documents: list[str] = Field(default_factory=list)
+    client_phone: str | None = Field(default=None, max_length=32)
+    portal_url: str | None = Field(default=None, max_length=1000)
+    notify_whatsapp: bool = True
 
 
 class ClientQueryUpdateRequest(BaseModel):
@@ -241,6 +246,9 @@ class ClientApprovalCreateRequest(BaseModel):
     summary: str = Field(min_length=1, max_length=4000)
     approval_type: str = Field(default="CLIENT_CONFIRMATION", min_length=1, max_length=64)
     due_at: str | None = None
+    client_phone: str | None = Field(default=None, max_length=32)
+    portal_url: str | None = Field(default=None, max_length=1000)
+    notify_whatsapp: bool = True
 
 
 class ClientApprovalActionRequest(BaseModel):
@@ -320,11 +328,30 @@ async def create_portal_query(
             priority=payload.priority.upper(),
             due_at=payload.due_at,
             requested_documents=payload.requested_documents,
+            client_phone=payload.client_phone,
+            portal_url=payload.portal_url,
         )
     except ValueError as exc:
         detail = str(exc)
         status_code = 404 if "not found" in detail.lower() else 400
         raise HTTPException(status_code=status_code, detail=detail) from exc
+    if payload.notify_whatsapp and payload.client_phone:
+        message = (
+            f"Arkashri audit query for {query['title']}: {query['question']}"
+            + (f" Portal: {payload.portal_url}" if payload.portal_url else "")
+        )
+        result = await send_whatsapp_message(to_phone=payload.client_phone, message=message)
+        notification = {"channel": "WHATSAPP", **result.to_dict()}
+        await record_client_workflow_notification(
+            session,
+            engagement_id=engagement_id,
+            tenant_id=auth.tenant_id,
+            item_type="query",
+            item_id=query["id"],
+            channel="WHATSAPP",
+            result=result.to_dict(),
+        )
+        query.setdefault("notifications", []).append(notification)
     return {"engagement_id": str(engagement_id), "query": query}
 
 
@@ -387,11 +414,30 @@ async def create_portal_approval(
             summary=payload.summary,
             approval_type=payload.approval_type,
             due_at=payload.due_at,
+            client_phone=payload.client_phone,
+            portal_url=payload.portal_url,
         )
     except ValueError as exc:
         detail = str(exc)
         status_code = 404 if "not found" in detail.lower() else 400
         raise HTTPException(status_code=status_code, detail=detail) from exc
+    if payload.notify_whatsapp and payload.client_phone:
+        message = (
+            f"Arkashri approval request: {approval['title']}. {approval['summary']}"
+            + (f" Portal: {payload.portal_url}" if payload.portal_url else "")
+        )
+        result = await send_whatsapp_message(to_phone=payload.client_phone, message=message)
+        notification = {"channel": "WHATSAPP", **result.to_dict()}
+        await record_client_workflow_notification(
+            session,
+            engagement_id=engagement_id,
+            tenant_id=auth.tenant_id,
+            item_type="approval",
+            item_id=approval["id"],
+            channel="WHATSAPP",
+            result=result.to_dict(),
+        )
+        approval.setdefault("notifications", []).append(notification)
     return {"engagement_id": str(engagement_id), "approval": approval}
 
 

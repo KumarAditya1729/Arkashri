@@ -78,10 +78,14 @@ class Settings(BaseSettings):
     smtp_from: str = "audit@arkashri.io"
     sms_webhook_url: str | None = None
     sms_webhook_bearer_token: str | None = None
+    whatsapp_webhook_url: str | None = None
+    whatsapp_bearer_token: str | None = None
+    whatsapp_from_number: str | None = None
 
     # ── ERP credential encryption ─────────────────────────────────────────────
     # AES-256 key for encrypting connection_config in erp_connection table
     erp_config_encryption_key: str | None = None
+    field_data_encryption_key: str | None = None
 
     # ── Observability (Sentry) ────────────────────────────────────────────────
     sentry_dsn: str | None = None
@@ -100,10 +104,14 @@ class Settings(BaseSettings):
     storage_provider: str = "local"
     upload_dir: str = "./uploads"
     evidence_s3_bucket: str | None = None
+    report_artifact_s3_bucket: str | None = None
     max_file_size: int = 52428800
     allowed_file_types: str = "application/pdf,image/jpeg,image/png,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     erp_request_timeout_seconds: int = 30
     bank_csv_max_rows: int = 10000
+    mca_master_data_url: str | None = None
+    mca_api_key: str | None = None
+    mca_request_timeout_seconds: int = 20
 
     # ── Production Settings ───────────────────────────────────────────────────────
     # Database connection settings

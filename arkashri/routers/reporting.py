@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
@@ -31,6 +31,11 @@ from arkashri.services.india_udin import (
     get_report_udin,
     verify_public_report,
 )
+from arkashri.services.india_report_artifacts import (
+    IndiaReportArtifactError,
+    persist_india_report_artifact,
+    render_india_report_artifact,
+)
 
 router = APIRouter()
 
@@ -41,6 +46,22 @@ class IndiaStatutoryReportRequest(BaseModel):
 
 class GenerateUDINRequest(BaseModel):
     member_id: str | None = None
+
+
+class ReportArtifactOut(BaseModel):
+    report_id: str
+    filename: str
+    content_type: str
+    report_hash: str
+    verification_url: str
+    qr_code_data_url: str
+    artifact_html: str
+    render_context: dict[str, Any]
+
+
+class PersistedReportArtifactOut(BaseModel):
+    report_id: str
+    artifact: dict[str, Any]
 
 @router.post("/generate", response_model=ReportOut, status_code=status.HTTP_202_ACCEPTED)
 async def generate_audit_report(
@@ -291,6 +312,94 @@ async def get_udin_for_report(
     except UDINError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"report_id": report_id, "udin": udin}
+
+
+@router.get(
+    "/reports/{report_id}/artifact",
+    response_model=None,
+)
+async def get_report_artifact(
+    report_id: str,
+    format: str = Query(default="html", pattern="^(html|pdf)$"),
+    verification_base_url: str = Query(default="/api/v1/reporting/public/report-verify"),
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> Any:
+    try:
+        rid = uuid.UUID(report_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid report_id UUID")
+
+    try:
+        artifact = await render_india_report_artifact(
+            session,
+            report_id=rid,
+            tenant_id=auth.tenant_id,
+            format=format,
+            verification_base_url=verification_base_url,
+        )
+    except IndiaReportArtifactError as exc:
+        detail = str(exc)
+        status_code = 400
+        if "not found" in detail.lower():
+            status_code = 404
+        elif "unavailable" in detail.lower():
+            status_code = 503
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+
+    if format == "pdf":
+        return Response(
+            content=artifact.body,
+            media_type=artifact.content_type,
+            headers={"Content-Disposition": f'inline; filename="{artifact.filename}"'},
+        )
+
+    return ReportArtifactOut(
+        report_id=report_id,
+        filename=artifact.filename,
+        content_type=artifact.content_type,
+        report_hash=artifact.render_context["report_hash"],
+        verification_url=artifact.verification_url,
+        qr_code_data_url=artifact.qr_code_data_url,
+        artifact_html=str(artifact.body),
+        render_context=artifact.render_context,
+    )
+
+
+@router.post(
+    "/reports/{report_id}/artifact/persist",
+    response_model=PersistedReportArtifactOut,
+)
+async def persist_report_artifact(
+    report_id: str,
+    format: str = Query(default="html", pattern="^(html|pdf)$"),
+    verification_base_url: str = Query(default="/api/v1/reporting/public/report-verify"),
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+) -> PersistedReportArtifactOut:
+    try:
+        rid = uuid.UUID(report_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid report_id UUID")
+
+    try:
+        artifact = await persist_india_report_artifact(
+            session,
+            report_id=rid,
+            tenant_id=auth.tenant_id,
+            format=format,
+            verification_base_url=verification_base_url,
+            actor_id=auth.client_name,
+        )
+    except IndiaReportArtifactError as exc:
+        detail = str(exc)
+        status_code = 400
+        if "not found" in detail.lower():
+            status_code = 404
+        elif "unavailable" in detail.lower():
+            status_code = 503
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    return PersistedReportArtifactOut(report_id=report_id, artifact=artifact)
 
 
 @router.get(

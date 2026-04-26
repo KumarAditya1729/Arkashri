@@ -13,59 +13,43 @@ existing callers (routers, tests) keep working unchanged.
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
-import aiofiles
-import aiofiles.os
 from fastapi import Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from arkashri.models import SystemAuditLog, TransactionEvidenceMap
 from arkashri.services.seal import compute_seal_hash, compute_seal_signature
-from arkashri.config import get_settings
+from arkashri.services.object_storage import object_storage_service
 
 logger = logging.getLogger("services.evidence")
 
 
-# ─── Local-disk storage backend ───────────────────────────────────────────────
-
 class LocalStorageBackend:
-    """
-    Persists evidence files to a local directory tree organised by tenant.
-    Suitable for single-instance deployments; swap for S3Backend in production.
-    """
+    """Backward-compatible local evidence backend used by older tests/callers."""
 
     def __init__(self, base_dir: str):
-        self.base_dir = base_dir
+        from arkashri.services.object_storage import LocalObjectStorage
+
+        self._storage = LocalObjectStorage(base_dir)
 
     async def save(self, tenant_id: str, file: UploadFile) -> str:
-        """Write uploaded file bytes to disk and return the absolute path."""
-        dest_dir = os.path.join(self.base_dir, tenant_id)
-        os.makedirs(dest_dir, exist_ok=True)
-        safe_name = f"{uuid.uuid4()}_{os.path.basename(file.filename or 'upload')}"
-        dest = os.path.join(dest_dir, safe_name)
         content = await file.read()
-        async with aiofiles.open(dest, "wb") as fp:
-            await fp.write(content)
-        logger.info("evidence_saved dest=%s size=%s", dest, len(content))
-        return dest
+        stored = await self._storage.save_bytes(
+            key=f"{tenant_id}/{uuid.uuid4()}_{file.filename or 'upload'}",
+            content=content,
+            content_type=file.content_type,
+        )
+        return stored.uri
 
     async def read(self, file_path: str) -> bytes:
-        """Return file bytes from disk."""
-        async with aiofiles.open(file_path, "rb") as fp:
-            return await fp.read()
+        return await self._storage.read_bytes(file_path)
 
     async def delete(self, file_path: str) -> None:
-        """Remove file from disk if it exists."""
-        try:
-            await aiofiles.os.remove(file_path)
-            logger.info("evidence_deleted path=%s", file_path)
-        except FileNotFoundError:
-            logger.warning("evidence_delete_not_found path=%s", file_path)
+        await self._storage.delete(file_path)
 
 
 # ─── Combined evidence service ────────────────────────────────────────────────
@@ -79,8 +63,8 @@ class EvidenceService:
     """
 
     def __init__(self):
-        settings = get_settings()
-        self.backend = LocalStorageBackend(settings.upload_dir)
+        self.storage = object_storage_service
+        self.backend = None
 
     # ── Storage operations ────────────────────────────────────────────────────
 
@@ -89,15 +73,35 @@ class EvidenceService:
         Persist an uploaded file and return its storage path.
         Called by: routers/evidence.py, routers/rag.py.
         """
-        return await self.backend.save(tenant_id, file)
+        if self.backend is not None:
+            return await self.backend.save(tenant_id, file)
+
+        content = await file.read()
+        stored = await self.storage.save_bytes(
+            tenant_id=tenant_id,
+            category="evidence",
+            filename=file.filename or "upload",
+            content=content,
+            content_type=file.content_type,
+        )
+        logger.info("evidence_saved uri=%s size=%s", stored.uri, len(content))
+        return stored.uri
 
     async def get_evidence_content(self, file_path: str) -> bytes:
         """Retrieve raw bytes for an evidence file (for RAG ingestion, etc.)."""
-        return await self.backend.read(file_path)
+        if self.backend is not None:
+            return await self.backend.read(file_path)
+        return await self.storage.read_bytes(file_path)
 
     async def delete_evidence(self, file_path: str) -> None:
         """Remove an evidence file from storage."""
-        await self.backend.delete(file_path)
+        if self.backend is not None:
+            await self.backend.delete(file_path)
+            return
+        await self.storage.delete(file_path)
+
+    async def get_evidence_download_url(self, file_path: str, *, expires_in: int = 3600) -> str:
+        return await self.storage.presigned_url(file_path, expires_in=expires_in)
 
     # ── Transaction linkage ───────────────────────────────────────────────────
 

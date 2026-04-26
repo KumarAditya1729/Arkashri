@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{ client_name }} - India Statutory Audit Report</title>
+    <style>
+      @page {
+        margin: 28px;
+      }
+
+      body {
+        font-family: "DejaVu Sans", sans-serif;
+        color: #1f2933;
+        font-size: 11px;
+        line-height: 1.5;
+      }
+
+      h1, h2, h3 {
+        margin: 0 0 10px 0;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      h2 {
+        font-size: 16px;
+        margin-top: 22px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #d9e2ec;
+      }
+
+      h3 {
+        font-size: 13px;
+        margin-top: 16px;
+      }
+
+      p {
+        margin: 0 0 10px 0;
+      }
+
+      .header {
+        border: 1px solid #bcccdc;
+        padding: 20px;
+        background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+      }
+
+      .meta-grid {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 14px;
+      }
+
+      .meta-grid td {
+        padding: 7px 10px;
+        border: 1px solid #d9e2ec;
+        vertical-align: top;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 4px 9px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+
+      .badge.final {
+        background: #d9f2e3;
+        color: #0b6b37;
+      }
+
+      .badge.draft {
+        background: #fff3cd;
+        color: #8a5d00;
+      }
+
+      .seal-box,
+      .section-card {
+        border: 1px solid #d9e2ec;
+        padding: 14px;
+        margin-top: 14px;
+        background: #fff;
+      }
+
+      .seal-grid {
+        display: table;
+        width: 100%;
+      }
+
+      .seal-left,
+      .seal-right {
+        display: table-cell;
+        vertical-align: top;
+      }
+
+      .seal-right {
+        width: 180px;
+        text-align: right;
+      }
+
+      .hash {
+        word-break: break-all;
+        font-family: "DejaVu Sans Mono", monospace;
+        font-size: 10px;
+        color: #243b53;
+      }
+
+      .table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+      }
+
+      .table th,
+      .table td {
+        border: 1px solid #d9e2ec;
+        padding: 7px 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .table th {
+        background: #f5f7fa;
+      }
+
+      ul {
+        margin: 8px 0 0 18px;
+      }
+
+      .muted {
+        color: #52606d;
+      }
+
+      .footer {
+        margin-top: 24px;
+        font-size: 10px;
+        color: #52606d;
+        border-top: 1px solid #d9e2ec;
+        padding-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>Independent Auditor's Report</h1>
+      <p class="muted">Companies Act compliant statutory audit output generated within Arkashri.</p>
+      <table class="meta-grid">
+        <tr>
+          <td><strong>Client</strong><br />{{ client_name }}</td>
+          <td><strong>Engagement Type</strong><br />{{ engagement_type }}</td>
+          <td><strong>Jurisdiction</strong><br />{{ jurisdiction }}</td>
+        </tr>
+        <tr>
+          <td><strong>Report ID</strong><br />{{ report_id }}</td>
+          <td><strong>Engagement ID</strong><br />{{ engagement_id }}</td>
+          <td>
+            <strong>Status</strong><br />
+            <span class="badge {{ 'draft' if is_draft else 'final' }}">{{ 'DRAFT' if is_draft else 'FINAL' }}</span>
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Generated At</strong><br />{{ generated_at }}</td>
+          <td><strong>UDIN</strong><br />{{ udin.number if udin.number else 'Pending' }}</td>
+          <td><strong>Seal Status</strong><br />{{ seal_summary.status or 'NOT_SEALED' }}</td>
+        </tr>
+        {% if mca_company_master %}
+        <tr>
+          <td><strong>CIN</strong><br />{{ mca_company_master.cin }}</td>
+          <td><strong>MCA Status</strong><br />{{ mca_company_master.company_status }}</td>
+          <td><strong>Paid-up Capital</strong><br />{{ mca_company_master.paid_up_capital or 'Not available' }}</td>
+        </tr>
+        {% endif %}
+      </table>
+    </div>
+
+    <div class="seal-box">
+      <div class="seal-grid">
+        <div class="seal-left">
+          <h2 style="margin-top:0;">Verification Seal</h2>
+          <p><strong>Verification URL:</strong> {{ verification_url }}</p>
+          <p><strong>Report Hash:</strong></p>
+          <p class="hash">{{ report_hash }}</p>
+          <p><strong>Seal Hash:</strong></p>
+          <p class="hash">{{ seal_summary.stored_hash or 'Not yet sealed' }}</p>
+        </div>
+        <div class="seal-right">
+          <img src="{{ qr_code_data_url }}" alt="Verification QR" style="width:150px;height:150px;" />
+        </div>
+      </div>
+    </div>
+
+    <h2>{{ opinions.opinion.title }}</h2>
+    <p>{{ opinions.opinion.text }}</p>
+
+    <h2>{{ opinions.basis_for_opinion.title }}</h2>
+    <p>{{ opinions.basis_for_opinion.text }}</p>
+
+    {% if mca_company_master %}
+      <h2>MCA Company Master</h2>
+      <table class="table">
+        <tbody>
+          <tr>
+            <th>Company Name</th>
+            <td>{{ mca_company_master.company_name }}</td>
+          </tr>
+          <tr>
+            <th>CIN</th>
+            <td>{{ mca_company_master.cin }}</td>
+          </tr>
+          <tr>
+            <th>Registered Office</th>
+            <td>{{ mca_company_master.registered_office or 'Not available' }}</td>
+          </tr>
+          <tr>
+            <th>Last AGM</th>
+            <td>{{ mca_company_master.last_agm_date or 'Not available' }}</td>
+          </tr>
+          <tr>
+            <th>Directors</th>
+            <td>
+              {% if mca_company_master.directors %}
+                {{ mca_company_master.directors | length }} director record(s) attached
+              {% else %}
+                Not available
+              {% endif %}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    {% endif %}
+
+    <h2>Key Audit Matters</h2>
+    {% if key_audit_matters %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Audit Area</th>
+            <th>Status</th>
+            <th>Linked Checklist Codes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for matter in key_audit_matters %}
+            <tr>
+              <td>{{ matter.title }}</td>
+              <td>{{ matter.audit_area }}</td>
+              <td>{{ matter.status }}</td>
+              <td>{{ ", ".join(matter.linked_checklist_codes or []) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    <h2>{{ opinions.other_information.title }}</h2>
+    <p>{{ opinions.other_information.text }}</p>
+
+    <h2>{{ opinions.management_responsibility.title }}</h2>
+    <p>{{ opinions.management_responsibility.text }}</p>
+
+    <h2>{{ opinions.auditor_responsibility.title }}</h2>
+    <p>{{ opinions.auditor_responsibility.text }}</p>
+
+    <h2>CARO 2020 Annexure</h2>
+    {% if caro_annexure %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Clause</th>
+            <th>Title</th>
+            <th>Status</th>
+            <th>Response</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in caro_annexure %}
+            <tr>
+              <td>{{ item.clause_ref }}</td>
+              <td>{{ item.title }}</td>
+              <td>{{ item.status }}</td>
+              <td>{{ item.response }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No CARO observations recorded in this report.</p>
+    {% endif %}
+
+    <h2>GST Reconciliation Highlights</h2>
+    {% if gst_sections %}
+      {% for gst in gst_sections %}
+        <div class="section-card">
+          <h3>{{ gst.title }}</h3>
+          <p>
+            Matched: {{ gst.summary.matched_count or 0 }} |
+            Mismatches: {{ gst.summary.mismatch_count or 0 }} |
+            Books Records: {{ gst.summary.books_record_count or 0 }} |
+            Portal Records: {{ gst.summary.portal_record_count or 0 }}
+          </p>
+          {% if gst.mismatches %}
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Invoice</th>
+                  <th>GSTIN</th>
+                  <th>Variance</th>
+                  <th>Risk</th>
+                  <th>Reasons</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for mismatch in gst.mismatches %}
+                  <tr>
+                    <td>{{ mismatch.invoice_no }}</td>
+                    <td>{{ mismatch.gstin }}</td>
+                    <td>{{ mismatch.variance_amount }}</td>
+                    <td>{{ mismatch.risk_classification }}</td>
+                    <td>{{ ", ".join(mismatch.reason_codes or []) }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No GST reconciliations were attached to this report.</p>
+    {% endif %}
+
+    <h2>Tally Import Summary</h2>
+    {% if tally_sections %}
+      {% for tally in tally_sections %}
+        <div class="section-card">
+          <h3>{{ tally.title }}</h3>
+          <table class="table">
+            <tbody>
+              {% for key, value in tally.details.items() %}
+                <tr>
+                  <th>{{ key }}</th>
+                  <td>{{ value }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No Tally import summary available.</p>
+    {% endif %}
+
+    {% if readiness_blockers %}
+      <h2>Outstanding Draft Blockers</h2>
+      <ul>
+        {% for blocker in readiness_blockers %}
+          <li>{{ blocker.code }}: {{ blocker.title }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    <div class="footer">
+      <p>This artifact was generated from Arkashri engagement data, checklist responses, GST reconciliations, and report verification metadata.</p>
+      <p>Verification depends on the current report hash, UDIN status, and cryptographic seal state recorded for the engagement.</p>
+    </div>
+  </body>
+</html>

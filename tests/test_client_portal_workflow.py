@@ -1,11 +1,24 @@
 import pytest
 
 from arkashri.models import Engagement, EngagementStatus, EngagementType, StandardsFramework
+from arkashri.services.whatsapp import WhatsAppDispatchResult
 
 
 @pytest.mark.asyncio
 async def test_client_query_and_approval_workflow(async_client, db_session, monkeypatch) -> None:
     monkeypatch.setattr("arkashri.dependencies.settings.auth_enforced", False)
+
+    async def fake_whatsapp_dispatch(*, to_phone: str, message: str) -> WhatsAppDispatchResult:
+        assert to_phone == "+919876543210"
+        assert "Arkashri" in message
+        return WhatsAppDispatchResult(
+            status="SENT",
+            provider_message_id="wamid.test",
+            error=None,
+            dispatched_at="2026-04-26T18:30:00+00:00",
+        )
+
+    monkeypatch.setattr("arkashri.routers.client_portal.send_whatsapp_message", fake_whatsapp_dispatch)
 
     engagement = Engagement(
         tenant_id="default_tenant",
@@ -35,10 +48,13 @@ async def test_client_query_and_approval_workflow(async_client, db_session, monk
             "question": "Please upload the April bank confirmation and final sanction letter.",
             "priority": "HIGH",
             "requested_documents": ["Bank confirmation", "Sanction letter"],
+            "client_phone": "+919876543210",
+            "portal_url": "https://app.arkashri.example/portal/test-token",
         },
     )
     assert query_response.status_code == 200
     query_id = query_response.json()["query"]["id"]
+    assert query_response.json()["query"]["notifications"][0]["status"] == "SENT"
 
     approval_response = await async_client.post(
         f"/api/v1/portal/engagements/{engagement.id}/approvals",
@@ -46,10 +62,13 @@ async def test_client_query_and_approval_workflow(async_client, db_session, monk
             "title": "Approve management representation draft",
             "summary": "Please confirm the draft management representation letter wording.",
             "approval_type": "MANAGEMENT_REPRESENTATION",
+            "client_phone": "+919876543210",
+            "portal_url": "https://app.arkashri.example/portal/test-token",
         },
     )
     assert approval_response.status_code == 200
     approval_id = approval_response.json()["approval"]["id"]
+    assert approval_response.json()["approval"]["notifications"][0]["provider_message_id"] == "wamid.test"
 
     dashboard_response = await async_client.get(f"/api/v1/portal/dashboard?token={token}")
     assert dashboard_response.status_code == 200
@@ -79,7 +98,9 @@ async def test_client_query_and_approval_workflow(async_client, db_session, monk
     assert internal_workflow.status_code == 200
     workflow = internal_workflow.json()["workflow"]
     assert workflow["queries"][0]["status"] == "CLIENT_RESPONDED"
+    assert workflow["queries"][0]["notifications"][0]["channel"] == "WHATSAPP"
     assert workflow["approvals"][0]["status"] == "APPROVED"
+    assert workflow["approvals"][0]["notifications"][0]["status"] == "SENT"
 
 
 @pytest.mark.asyncio

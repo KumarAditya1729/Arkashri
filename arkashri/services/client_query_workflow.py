@@ -65,6 +65,8 @@ async def create_client_query(
     priority: str,
     due_at: str | None,
     requested_documents: list[str],
+    client_phone: str | None = None,
+    portal_url: str | None = None,
 ) -> dict[str, Any]:
     engagement = await _load_engagement(session, engagement_id=engagement_id, tenant_id=tenant_id)
     metadata = _ensure_workflow_bucket(engagement)
@@ -78,6 +80,9 @@ async def create_client_query(
         "status": "OPEN",
         "due_at": due_at,
         "requested_documents": requested_documents,
+        "client_phone": client_phone,
+        "portal_url": portal_url,
+        "notifications": [],
         "created_at": _now_iso(),
         "created_by": actor_id,
         "client_response": None,
@@ -191,6 +196,8 @@ async def create_client_approval(
     summary: str,
     approval_type: str,
     due_at: str | None,
+    client_phone: str | None = None,
+    portal_url: str | None = None,
 ) -> dict[str, Any]:
     engagement = await _load_engagement(session, engagement_id=engagement_id, tenant_id=tenant_id)
     metadata = _ensure_workflow_bucket(engagement)
@@ -203,6 +210,9 @@ async def create_client_approval(
         "approval_type": approval_type,
         "status": "PENDING",
         "due_at": due_at,
+        "client_phone": client_phone,
+        "portal_url": portal_url,
+        "notifications": [],
         "created_at": _now_iso(),
         "created_by": actor_id,
         "decision": None,
@@ -266,6 +276,50 @@ async def action_client_approval(
         return approval
 
     raise ClientWorkflowError("Client approval request not found.")
+
+
+async def record_client_workflow_notification(
+    session: AsyncSession,
+    *,
+    engagement_id: uuid.UUID,
+    tenant_id: str,
+    item_type: str,
+    item_id: str,
+    channel: str,
+    result: dict[str, Any],
+) -> None:
+    engagement = await _load_engagement(session, engagement_id=engagement_id, tenant_id=tenant_id)
+    metadata = _ensure_workflow_bucket(engagement)
+    workflow = metadata[WORKFLOW_KEY]
+    bucket_name = "queries" if item_type == "query" else "approvals"
+
+    for item in workflow[bucket_name]:
+        if item["id"] != item_id:
+            continue
+        item.setdefault("notifications", [])
+        item["notifications"].append(
+            {
+                "channel": channel,
+                **result,
+            }
+        )
+        metadata["history"].append(
+            {
+                "timestamp": _now_iso(),
+                "actor": "system",
+                "action": "CLIENT_NOTIFICATION_RECORDED",
+                "item_type": item_type,
+                "item_id": item_id,
+                "channel": channel,
+                "status": result.get("status"),
+            }
+        )
+        engagement.state_metadata = metadata
+        session.add(engagement)
+        await session.commit()
+        return
+
+    raise ClientWorkflowError("Client workflow item not found.")
 
 
 async def get_client_portal_workflow(
