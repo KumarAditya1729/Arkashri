@@ -22,6 +22,11 @@ def _latest_tally_summary(engagement: Engagement) -> dict[str, Any]:
     return dict(metadata.get("tally_imports") or {})
 
 
+def _latest_mca_snapshot(engagement: Engagement) -> dict[str, Any]:
+    metadata = engagement.state_metadata or {}
+    return dict(metadata.get("mca_company_master") or {})
+
+
 def _build_key_audit_matters(workspace: dict[str, Any], readiness: dict[str, Any]) -> list[dict[str, Any]]:
     matters: list[dict[str, Any]] = []
     for paper in workspace["working_papers"]:
@@ -113,12 +118,14 @@ async def generate_india_statutory_report(
         tenant_id=tenant_id,
     )
     tally_imports = _latest_tally_summary(engagement)
+    mca_company_master = _latest_mca_snapshot(engagement)
     now = datetime.now(timezone.utc)
 
     report_payload = {
         "report_type": "INDIA_STATUTORY_AUDIT",
         "engagement_id": str(engagement.id),
         "client_name": engagement.client_name,
+        "mca_company_master": mca_company_master,
         "jurisdiction": engagement.jurisdiction,
         "engagement_type": engagement.engagement_type.value,
         "generated_at": now.isoformat(),
