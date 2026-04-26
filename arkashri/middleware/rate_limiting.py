@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from enum import Enum
 
 import redis.asyncio as redis
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 import structlog
 

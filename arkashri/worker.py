@@ -236,7 +236,7 @@ async def anchor_blockchain_task(
         anchors = db_step.evidence_payload.get("blockchain_anchors", [])
         if anchors and anchors != ["PENDING_BACKGROUND"]:
             logger.info("bg_blockchain_anchoring_skipped_idempotency", step_id=step_id, anchors=anchors)
-            return existing_result if 'existing_result' in locals() else True
+            return True
 
     try:
         anchor_result = await multi_chain_blockchain_service.anchor_evidence_multi_chain(

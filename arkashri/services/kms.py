@@ -6,9 +6,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Tuple
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.exceptions import InvalidSignature
 
 from arkashri.config import get_settings
 
@@ -103,7 +102,7 @@ class AsymmetricKeyProvider(BaseKeyProvider):
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             ).decode('utf-8')
             
-            root_signature = trust_anchor.sign_tenant_key(tenant_id, pub_pem)
+            _ = trust_anchor.sign_tenant_key(tenant_id, pub_pem)
             logger.info("[Transparency Log] Generated KeyLifecycleEvent (CREATED) for %s", tenant_id)
         
         priv_key = self._keys[tenant_id]

@@ -24,11 +24,11 @@ from arkashri.routers.token import router as token_router
 from arkashri.routers.seal_sessions import router as seal_sessions_router
 from arkashri.routers.erp_ingestion import router as erp_ingestion_router
 from arkashri.routers.users import router as users_router
-from arkashri.routers.websockets import router as websockets_router
 from arkashri.routers.controls import router as controls_router
 from arkashri.routers.planning import router as planning_router
 from arkashri.routers.going_concern import router as going_concern_router
 from arkashri.routers.bank_ingestion import router as bank_ingestion_router
+from arkashri.routers.gst import router as gst_router
 
 router = APIRouter()
 
@@ -56,6 +56,7 @@ router.include_router(evidence_router, prefix="", tags=["Evidence Management"])
 router.include_router(seal_sessions_router, prefix="", tags=["Multi-Partner Seal Sessions"])
 router.include_router(erp_ingestion_router, prefix="", tags=["ERP Integration"])
 router.include_router(bank_ingestion_router, prefix="", tags=["Bank Ingestion"])
+router.include_router(gst_router, prefix="", tags=["GST Reconciliation"])
 router.include_router(controls_router, prefix="", tags=["Controls Registry"])
 router.include_router(planning_router, prefix="", tags=["Audit Planning"])
 router.include_router(going_concern_router, prefix="", tags=["Going Concern (SA 570)"])

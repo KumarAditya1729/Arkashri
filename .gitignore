@@ -1,6 +1,15 @@
-__pycache__/
-*.pyc
-*.pyo
+# Secrets and local environment overrides
+.env
+.env.*
+!.env.example
+!.env.local.example
+!.env.local.template
+
+# macOS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
 
 # Python virtual environments
 .venv/
@@ -9,42 +18,71 @@ __pycache__/
 .venv_health/
 venv/
 
-# ── Secrets — NEVER commit these ─────────────────────────────────────────────
-.env
-.env.*
-
-# ── Local SQLite databases ────────────────────────────────────────────────────
-*.db
-*.sqlite
-*.sqlite3
-
-# ── Logs ──────────────────────────────────────────────────────────────────────
-logs/
-*.log
-server.log
-
-# ── Scratch / test scripts ────────────────────────────────────────────────────
-test_*.py
-!tests/
-
-# ── Uploads ───────────────────────────────────────────────────────────────────
-uploads/
-
-# ── Build and cache artefacts ─────────────────────────────────────────────────
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*.so
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-.pyre_configuration
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.pyre/
+.pyre_configuration.local
 *.egg-info/
 build/
 dist/
-.next/
+pip-wheel-metadata/
 
-# ── Node / NPM ────────────────────────────────────────────────────────────────
+# Node / Next.js artifacts
 node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+.npm/
 .npm_cache/
-package-lock.json
+coverage/
+*.tsbuildinfo
 
-# ── Deployment tooling ────────────────────────────────────────────────────────
-.vercel
-.DS_Store
+# Local databases and WAL files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+
+# Runtime logs, traces, and PID files
+logs/
+*.log
+*.out
+*.err
+*.pid
+*.pid.lock
+*.seed
+*.stackdump
+*.trace
+*.har
+
+# Local uploads, backups, and scratch work
+uploads/
+backups/
+scratch/
+tmp/
+temp/
+
+# Test and debug artifacts that should never live in git
+test_websocket.html
+run_e2e_local.py
+frontend.pid
+frontend2.pid
+uvicorn.log
+uvicorn2.log
+server.log
+
+# Deployment / tool state
+.vercel/
+frontend/.git/

@@ -6,7 +6,7 @@ with a DB record table for auditability.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Form
 import structlog

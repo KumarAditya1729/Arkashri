@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import time
 import datetime
-from typing import Literal
+from typing import Any, Literal
+from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
@@ -32,6 +33,12 @@ from arkashri.dependencies import require_api_client, AuthContext, limiter
 from arkashri.services.erp_adapter import normalize_batch
 from arkashri.services.erp_connectors import ERPConnectorError, get_connector
 from arkashri.services.crypto import encrypt_dict
+from arkashri.services.tally_ingestion import (
+    TallyIngestionError,
+    get_tally_summary,
+    import_trial_balance,
+    import_vouchers,
+)
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
@@ -104,6 +111,27 @@ class ExternalERPOut(BaseModel):
     source: str
     trial_balance: list[dict] | None = None
     accounts: list[dict] | None = None
+
+
+class TallyImportRequest(BaseModel):
+    connection_id: UUID | None = None
+    raw_xml: str | None = Field(
+        default=None,
+        description="Raw Tally XML payload. Use for manual upload/testing when live connectivity is unavailable.",
+    )
+    from_date: str | None = Field(default=None, description="YYYY-MM-DD")
+    to_date: str | None = Field(default=None, description="YYYY-MM-DD")
+
+
+class TallyImportOut(BaseModel):
+    import_type: str
+    source: str
+    imported_at: str
+    summary: dict[str, Any]
+
+
+class TallySummaryOut(BaseModel):
+    imports: dict[str, Any]
 
 
 # ─── 1. Register ERP Connection ───────────────────────────────────────────────
@@ -451,3 +479,95 @@ def _log_out(log: ERPSyncLog) -> SyncLogOut:
         started_at=log.started_at.isoformat(),
         completed_at=log.completed_at.isoformat() if log.completed_at else None,
     )
+
+
+@router.post(
+    "/erp/engagements/{engagement_id}/tally/trial-balance/import",
+    response_model=TallyImportOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Import a Tally trial balance into an engagement workspace",
+)
+@limiter.limit("5/minute")
+async def import_tally_trial_balance(
+    request: Request,
+    engagement_id: UUID,
+    payload: TallyImportRequest,
+    db: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+) -> TallyImportOut:
+    try:
+        result = await import_trial_balance(
+            db,
+            engagement_id=engagement_id,
+            tenant_id=auth.tenant_id,
+            actor_id=auth.client_name,
+            raw_xml=payload.raw_xml,
+            connection_id=payload.connection_id,
+            from_date=payload.from_date,
+            to_date=payload.to_date,
+        )
+    except TallyIngestionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TallyImportOut(
+        import_type=result.import_type,
+        source=result.source,
+        imported_at=result.imported_at,
+        summary=result.summary,
+    )
+
+
+@router.post(
+    "/erp/engagements/{engagement_id}/tally/vouchers/import",
+    response_model=TallyImportOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Import Tally vouchers into the engagement ledger workspace",
+)
+@limiter.limit("5/minute")
+async def import_tally_vouchers(
+    request: Request,
+    engagement_id: UUID,
+    payload: TallyImportRequest,
+    db: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+) -> TallyImportOut:
+    try:
+        result = await import_vouchers(
+            db,
+            engagement_id=engagement_id,
+            tenant_id=auth.tenant_id,
+            actor_id=auth.client_name,
+            jurisdiction="IN",
+            raw_xml=payload.raw_xml,
+            connection_id=payload.connection_id,
+            from_date=payload.from_date,
+            to_date=payload.to_date,
+        )
+    except TallyIngestionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TallyImportOut(
+        import_type=result.import_type,
+        source=result.source,
+        imported_at=result.imported_at,
+        summary=result.summary,
+    )
+
+
+@router.get(
+    "/erp/engagements/{engagement_id}/tally/summary",
+    response_model=TallySummaryOut,
+    summary="Get the latest Tally import summaries and ledger mapping snapshot for an engagement",
+)
+async def get_engagement_tally_summary(
+    engagement_id: UUID,
+    db: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
+) -> TallySummaryOut:
+    try:
+        summary = await get_tally_summary(
+            db,
+            engagement_id=engagement_id,
+            tenant_id=auth.tenant_id,
+        )
+    except TallyIngestionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return TallySummaryOut(imports=summary)
