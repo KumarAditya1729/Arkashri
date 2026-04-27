@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import field_validator, model_validator
 
 from arkashri.models import (
     ApprovalActionType,
@@ -16,6 +17,10 @@ from arkashri.models import (
     ClientRole,
     EngagementStatus,
     EngagementType,
+    AuditWorkflowType,
+    AuditSLAStatus,
+    WorkflowReportStatus,
+    WorkflowReviewStatus,
     ExceptionStatus,
     IngestRunStatus,
     KnowledgeSourceType,
@@ -653,19 +658,66 @@ class RegulatoryPromoteResponse(BaseModel):
 
 
 class EngagementCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     tenant_id: str = Field(min_length=1, max_length=100)
     jurisdiction: str = Field(min_length=2, max_length=20)
     client_name: str = Field(min_length=1, max_length=255)
     engagement_type: EngagementType = EngagementType.STATUTORY_AUDIT
     period_start: datetime | None = None
     period_end: datetime | None = None
+    audit_type: AuditWorkflowType | None = Field(default=None, alias="auditType")
+    target_completion_days: int = Field(default=7, ge=1, le=30, alias="targetCompletionDays")
+    start_date: datetime | None = Field(default=None, alias="startDate")
+    due_date: datetime | None = Field(default=None, alias="dueDate")
+    current_day: int | None = Field(default=None, ge=1, le=7, alias="currentDay")
+    sla_status: AuditSLAStatus = Field(default=AuditSLAStatus.ON_TRACK, alias="slaStatus")
+    checklist_progress: dict[str, Any] = Field(default_factory=dict, alias="checklistProgress")
+    document_progress: dict[str, Any] = Field(default_factory=dict, alias="documentProgress")
+    review_status: WorkflowReviewStatus = Field(default=WorkflowReviewStatus.PENDING, alias="reviewStatus")
+    report_status: WorkflowReportStatus = Field(default=WorkflowReportStatus.NOT_STARTED, alias="reportStatus")
     independence_cleared: bool | None = None
     kyc_cleared: bool | None = None
     conflict_check_notes: str | None = None
 
+    @field_validator("audit_type", mode="before")
+    @classmethod
+    def normalize_audit_type(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.lower().replace(" ", "_").replace("-", "_").replace("/", "_")
+        return value
+
+
+class EngagementWorkflowUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    audit_type: AuditWorkflowType | None = Field(default=None, alias="auditType")
+    target_completion_days: int | None = Field(default=None, ge=1, le=30, alias="targetCompletionDays")
+    start_date: datetime | None = Field(default=None, alias="startDate")
+    due_date: datetime | None = Field(default=None, alias="dueDate")
+    current_day: int | None = Field(default=None, ge=1, le=7, alias="currentDay")
+    sla_status: AuditSLAStatus | None = Field(default=None, alias="slaStatus")
+    checklist_progress: dict[str, Any] | None = Field(default=None, alias="checklistProgress")
+    document_progress: dict[str, Any] | None = Field(default=None, alias="documentProgress")
+    review_status: WorkflowReviewStatus | None = Field(default=None, alias="reviewStatus")
+    report_status: WorkflowReportStatus | None = Field(default=None, alias="reportStatus")
+
+    @field_validator("audit_type", mode="before")
+    @classmethod
+    def normalize_audit_type(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.lower().replace(" ", "_").replace("-", "_").replace("/", "_")
+        return value
+
+    @model_validator(mode="after")
+    def ensure_not_empty(self) -> "EngagementWorkflowUpdate":
+        if not self.model_dump(exclude_none=True):
+            raise ValueError("At least one workflow field must be supplied.")
+        return self
+
 
 class EngagementOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     tenant_id: str
@@ -675,6 +727,16 @@ class EngagementOut(BaseModel):
     engagement_type: EngagementType
     period_start: datetime | None
     period_end: datetime | None
+    audit_type: AuditWorkflowType = Field(alias="auditType")
+    target_completion_days: int = Field(alias="targetCompletionDays")
+    start_date: datetime = Field(alias="startDate")
+    due_date: datetime = Field(alias="dueDate")
+    current_day: int = Field(alias="currentDay")
+    sla_status: AuditSLAStatus = Field(alias="slaStatus")
+    checklist_progress: dict[str, Any] = Field(alias="checklistProgress")
+    document_progress: dict[str, Any] = Field(alias="documentProgress")
+    review_status: WorkflowReviewStatus = Field(alias="reviewStatus")
+    report_status: WorkflowReportStatus = Field(alias="reportStatus")
     status: EngagementStatus
     independence_cleared: bool
     kyc_cleared: bool
