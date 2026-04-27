@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import (
     JSON,
@@ -171,6 +171,37 @@ class EngagementType(str, enum.Enum):
     COST_AUDIT             = "COST_AUDIT"
     SOCIAL_AUDIT           = "SOCIAL_AUDIT"
     INVENTORY_AUDIT        = "INVENTORY_AUDIT"
+
+
+class AuditWorkflowType(str, enum.Enum):
+    STATUTORY_AUDIT = "statutory_audit"
+    TAX_AUDIT = "tax_audit"
+    GST_AUDIT = "gst_audit"
+    INTERNAL_AUDIT = "internal_audit"
+    STOCK_AUDIT = "stock_audit"
+    BANK_LOAN_AUDIT = "bank_loan_audit"
+
+
+class AuditSLAStatus(str, enum.Enum):
+    ON_TRACK = "on_track"
+    AT_RISK = "at_risk"
+    DELAYED = "delayed"
+    COMPLETED = "completed"
+
+
+class WorkflowReviewStatus(str, enum.Enum):
+    PENDING = "pending"
+    IN_REVIEW = "in_review"
+    CHANGES_REQUESTED = "changes_requested"
+    APPROVED = "approved"
+
+
+class WorkflowReportStatus(str, enum.Enum):
+    NOT_STARTED = "not_started"
+    DRAFT = "draft"
+    READY_FOR_REVIEW = "ready_for_review"
+    GENERATED = "generated"
+    SEALED = "sealed"
 
 
 class SealSessionStatus(str, enum.Enum):
@@ -1003,6 +1034,40 @@ class Engagement(Base):
     )
     period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    audit_type: Mapped[AuditWorkflowType] = mapped_column(
+        Enum(AuditWorkflowType, name="audit_workflow_type", values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=AuditWorkflowType.STATUTORY_AUDIT,
+    )
+    target_completion_days: Mapped[int] = mapped_column(Integer, nullable=False, default=7)
+    start_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    due_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc) + timedelta(days=7),
+    )
+    current_day: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    sla_status: Mapped[AuditSLAStatus] = mapped_column(
+        Enum(AuditSLAStatus, name="audit_sla_status", values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=AuditSLAStatus.ON_TRACK,
+    )
+    checklist_progress: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    document_progress: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    review_status: Mapped[WorkflowReviewStatus] = mapped_column(
+        Enum(WorkflowReviewStatus, name="workflow_review_status", values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=WorkflowReviewStatus.PENDING,
+    )
+    report_status: Mapped[WorkflowReportStatus] = mapped_column(
+        Enum(WorkflowReportStatus, name="workflow_report_status", values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=WorkflowReportStatus.NOT_STARTED,
+    )
     status: Mapped[EngagementStatus] = mapped_column(
         Enum(EngagementStatus, name="engagement_status", values_callable=lambda x: [e.value for e in x]), nullable=False, default=EngagementStatus.PENDING
     )
