@@ -1,6 +1,6 @@
 # pyre-ignore-all-errors
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, WebSocket
+from fastapi import FastAPI, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from arkashri.db import get_session
 from arkashri.models import ClientRole
@@ -10,6 +10,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from arq import create_pool
 from arq.connections import RedisSettings
+from starlette.middleware.sessions import SessionMiddleware
 
 import os
 import structlog
@@ -46,6 +47,7 @@ from arkashri.routers.judgments import router as judgments_router
 from arkashri.routers.client_portal import router as client_portal_router
 from arkashri.routers.reporting import router as reporting_router
 from arkashri.services.health import get_full_health_status
+from arkashri.middleware.idempotency import IdempotencyMiddleware
 
 # Import production middleware
 from arkashri.middleware.correlation import CorrelationMiddleware
@@ -187,8 +189,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-from arkashri.middleware.idempotency import IdempotencyMiddleware
-
 # ── Production Middleware Stack ─────────────────────────────────────────────────
 # Correlation ID (Primary entry point for trace propagation)
 app.add_middleware(CorrelationMiddleware)
@@ -250,10 +250,9 @@ if settings.enable_compression:
 # app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # app.add_middleware(SlowAPIMiddleware)
 
-# Session middleware — re-enabled (M4 fix)
-# SessionMiddleware is WebSocket-safe; it only reads/writes cookies and does
-# NOT wrap WebSocket upgrades like BaseHTTPMiddleware does.
-from starlette.middleware.sessions import SessionMiddleware
+# Session middleware — re-enabled (M4 fix). SessionMiddleware is WebSocket-safe;
+# it only reads/writes cookies and does NOT wrap WebSocket upgrades like
+# BaseHTTPMiddleware does.
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.session_secret_key,

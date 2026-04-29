@@ -25,6 +25,7 @@ from arkashri.schemas import (
 from arkashri.services.engagement import create_engagement, get_engagement, compute_materiality
 from arkashri.services.opinion import generate_draft_opinion
 from arkashri.services.seal import generate_audit_seal
+from arkashri.services.audit_log import log_system_event
 from arkashri.services.esg import upsert_esg_metrics
 from arkashri.services.forensic import upsert_forensic_profile
 from arkashri.services.engagement_workflow import (
@@ -130,8 +131,6 @@ async def generate_opinion(
         payload=payload
     )
     return OpinionOut.model_validate(opinion)
-
-from arkashri.services.audit_log import log_system_event
 
 @router.post("/engagements/{engagement_id}/seal", status_code=status.HTTP_201_CREATED)
 async def seal_engagement(

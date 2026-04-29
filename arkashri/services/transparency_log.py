@@ -1,9 +1,7 @@
 # pyre-ignore-all-errors
 import hashlib
-import json
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 

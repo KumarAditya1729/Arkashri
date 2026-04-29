@@ -17,12 +17,10 @@ from __future__ import annotations
 import base64 as _b64
 import datetime   # C-5 FIX: was missing
 import hashlib    # C-5 FIX: was missing
-import logging as _log
 import logging
 import uuid       # C-5 FIX: was missing
-from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple, Set
 
+from arkashri import SYSTEM_VERSION  # L-10: single source of truth
 from arkashri.services.canonical import hash_object, canonical_json_bytes
 
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -57,7 +55,6 @@ logger = logging.getLogger(__name__)
 # If unset, the insecure dev constant is used — system logs a WARNING.
 
 CURRENT_KEY_VERSION = "v1"
-from arkashri import SYSTEM_VERSION  # L-10: imported from arkashri/__init__.py — single source of truth
 
 
 # ─── Canonical JSON Serializer ────────────────────────────────────────────────
@@ -66,6 +63,10 @@ from arkashri import SYSTEM_VERSION  # L-10: imported from arkashri/__init__.py 
 #   - Decimal inconsistency
 #   - Timezone / ISO-8601 normalization
 #   - Non-deterministic list ordering
+
+def _canonical_float(value: object) -> float:
+    """Normalize numeric DB values for seal payload assembly."""
+    return float(value) if value is not None else 0.0
 
 def compute_seal_hash(payload: dict) -> str:
     """Public: compute SHA-256 of canonical payload. Used by verifier."""

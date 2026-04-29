@@ -11,9 +11,6 @@ def event_loop():
     loop.close()
 
 # Ensure all models are registered
-import arkashri.models
-import arkashri.routers.risks    # contains RiskEntry
-import arkashri.routers.evidence # contains EvidenceRecord
 
 @pytest_asyncio.fixture
 async def async_client(db_session):

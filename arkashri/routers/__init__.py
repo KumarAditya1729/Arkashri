@@ -24,7 +24,6 @@ from arkashri.routers.token import router as token_router
 from arkashri.routers.seal_sessions import router as seal_sessions_router
 from arkashri.routers.erp_ingestion import router as erp_ingestion_router
 from arkashri.routers.users import router as users_router
-from arkashri.routers.websockets import router as websockets_router
 from arkashri.routers.controls import router as controls_router
 from arkashri.routers.planning import router as planning_router
 from arkashri.routers.going_concern import router as going_concern_router

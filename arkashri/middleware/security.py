@@ -10,7 +10,7 @@ import re
 import time
 from typing import Dict, Set
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 import structlog
 
