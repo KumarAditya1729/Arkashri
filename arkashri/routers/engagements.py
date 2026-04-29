@@ -13,6 +13,7 @@ from arkashri.models import ClientRole, Engagement
 from arkashri.schemas import (
     EngagementCreate,
     EngagementOut,
+    EngagementWorkflowUpdate,
     MaterialityCreate,
     MaterialityOut,
     OpinionCreate,
@@ -22,7 +23,12 @@ from arkashri.schemas import (
     ForensicProfileCreate,
     ForensicProfileOut,
 )
-from arkashri.services.engagement import create_engagement, get_engagement, compute_materiality
+from arkashri.services.engagement import (
+    create_engagement,
+    get_engagement,
+    update_engagement_workflow,
+    compute_materiality,
+)
 from arkashri.services.opinion import generate_draft_opinion
 from arkashri.services.seal import generate_audit_seal
 from arkashri.services.audit_log import log_system_event
@@ -78,9 +84,29 @@ async def get_engagement_by_id(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
     engagement = await get_engagement(session, eid)
-    if not engagement:
+    if not engagement or engagement.tenant_id != _auth.tenant_id:
         raise HTTPException(status_code=404, detail="Engagement not found")
     return EngagementOut.model_validate(engagement)
+
+
+@router.patch("/engagements/{engagement_id}/workflow", response_model=EngagementOut)
+async def update_engagement_workflow_by_id(
+    engagement_id: str,
+    payload: EngagementWorkflowUpdate,
+    session: AsyncSession = Depends(get_session),
+    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
+) -> EngagementOut:
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID") from None
+
+    engagement = await get_engagement(session, eid)
+    if not engagement or engagement.tenant_id != _auth.tenant_id:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    updated = await update_engagement_workflow(session, engagement, payload)
+    return EngagementOut.model_validate(updated)
 
 
 @router.post("/engagements/{engagement_id}/materiality", response_model=MaterialityOut, status_code=status.HTTP_201_CREATED)

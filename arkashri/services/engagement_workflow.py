@@ -177,4 +177,15 @@ async def _verify_reviewed_readiness(session: AsyncSession, engagement: Engageme
         areas = ", ".join([j.area for j in pending_judgments])
         raise WorkflowViolation(f"Cannot transition to REVIEWED: PENDING judgments found in areas: {areas}. All findings must be signed.")
 
+    workspace = (engagement.state_metadata or {}).get("india_workspace")
+    if workspace:
+        from arkashri.services.india_audit_workspace import compute_workspace_readiness
+        readiness = compute_workspace_readiness(engagement)
+        if not readiness["is_report_ready"]:
+            blocker_codes = ", ".join(blocker["code"] for blocker in readiness["blockers"])
+            raise WorkflowViolation(
+                "Cannot transition to REVIEWED: India audit workspace is incomplete. "
+                f"Resolve blockers: {blocker_codes}."
+            )
+
     logger.info(f"Readiness verified for Engagement {engagement.id}: {len(judgments)} judgments signed.")

@@ -21,6 +21,8 @@ import logging
 import uuid       # C-5 FIX: was missing
 
 from arkashri import SYSTEM_VERSION  # L-10: single source of truth
+from decimal import Decimal
+
 from arkashri.services.canonical import hash_object, canonical_json_bytes
 
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -64,9 +66,12 @@ CURRENT_KEY_VERSION = "v1"
 #   - Timezone / ISO-8601 normalization
 #   - Non-deterministic list ordering
 
-def _canonical_float(value: object) -> float:
-    """Normalize numeric DB values for seal payload assembly."""
-    return float(value) if value is not None else 0.0
+def _canonical_float(value: Decimal | float | int | None) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return float(value.normalize())
+    return float(value)
 
 def compute_seal_hash(payload: dict) -> str:
     """Public: compute SHA-256 of canonical payload. Used by verifier."""
@@ -136,7 +141,6 @@ async def _build_seal_payload(
     sealing (which should be blocked by SEALED status + RLS) will cause a
     hash mismatch — and that IS the intended behaviour.
     """
-    datetime.datetime.now(datetime.timezone.utc)
     tenant_id    = engagement.tenant_id
     jurisdiction = engagement.jurisdiction
     engagement_id = engagement.id

@@ -102,7 +102,7 @@ class AsymmetricKeyProvider(BaseKeyProvider):
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             ).decode('utf-8')
             
-            trust_anchor.sign_tenant_key(tenant_id, pub_pem)
+            _ = trust_anchor.sign_tenant_key(tenant_id, pub_pem)
             logger.info("[Transparency Log] Generated KeyLifecycleEvent (CREATED) for %s", tenant_id)
         
         priv_key = self._keys[tenant_id]

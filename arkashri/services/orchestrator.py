@@ -187,6 +187,12 @@ async def execute_run(session: AsyncSession, run: AuditRun, *, max_steps: int = 
         output_hash = hash_object(output_payload)
         
         # Enqueue the background task
+        redis_pool = None
+        try:
+            from arkashri.main import app as _app
+            redis_pool = getattr(_app.state, "redis_pool", None)
+        except Exception:
+            redis_pool = None
         try:
             if redis_pool:
                 await redis_pool.enqueue_job(

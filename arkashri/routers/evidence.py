@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, Form
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status, Form
 import structlog
 import filetype
 from pydantic import BaseModel
@@ -51,19 +51,34 @@ class LinkTransactionsRequest(BaseModel):
     transaction_ids: list[uuid.UUID]
 
 
+class EvidenceDownloadUrlOut(BaseModel):
+    evidence_id: str
+    url: str
+    expires_in: int
+
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.get("/engagements/{engagement_id}/evidence", response_model=list[EvidenceOut])
 async def list_evidence(
     engagement_id: str,
     session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> list[EvidenceRecord]:
     try:
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
-    stmt = select(EvidenceRecord).where(EvidenceRecord.engagement_id == eid).order_by(EvidenceRecord.uploaded_at.desc())
+    engagement = await session.get(Engagement, eid)
+    if not engagement:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    if engagement.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied: engagement belongs to a different tenant.")
+    stmt = (
+        select(EvidenceRecord)
+        .where(EvidenceRecord.engagement_id == eid, EvidenceRecord.tenant_id == auth.tenant_id)
+        .order_by(EvidenceRecord.uploaded_at.desc())
+    )
     return list(await session.scalars(stmt))
 
 
@@ -83,6 +98,8 @@ async def upload_evidence(
     engagement = await session.get(Engagement, eid)
     if not engagement:
         raise HTTPException(status_code=404, detail="Engagement not found")
+    if engagement.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied: engagement belongs to a different tenant.")
 
     # M-9 FIX: sealed engagements are WORM — no mutations allowed
     from arkashri.models import EngagementStatus
@@ -201,6 +218,28 @@ async def upload_evidence(
     return record
 
 
+@router.get("/engagements/{engagement_id}/evidence/{evidence_id}/download-url", response_model=EvidenceDownloadUrlOut)
+async def get_evidence_download_url(
+    engagement_id: str,
+    evidence_id: str,
+    expires_in: int = Query(default=3600, ge=60, le=86400),
+    session: AsyncSession = Depends(get_session),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+) -> EvidenceDownloadUrlOut:
+    try:
+        eid = uuid.UUID(engagement_id)
+        ev_id = uuid.UUID(evidence_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid UUID")
+
+    record = await session.get(EvidenceRecord, ev_id)
+    if not record or record.engagement_id != eid or record.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=404, detail="Evidence not found")
+
+    url = await evidence_service.get_evidence_download_url(record.file_path, expires_in=expires_in)
+    return EvidenceDownloadUrlOut(evidence_id=evidence_id, url=url, expires_in=expires_in)
+
+
 @router.post("/evidence/{evidence_id}/link-transactions", status_code=status.HTTP_201_CREATED)
 async def link_evidence_to_tx(
     evidence_id: str,
@@ -219,6 +258,8 @@ async def link_evidence_to_tx(
     record = await session.get(EvidenceRecord, ev_id)
     if not record:
         raise HTTPException(status_code=404, detail="Evidence record not found")
+    if record.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied: evidence belongs to a different tenant.")
         
     await evidence_service.link_evidence_to_transactions(
         session, ev_id, payload.transaction_ids, record.tenant_id, auth.client_name
@@ -232,7 +273,7 @@ async def delete_evidence(
     engagement_id: str,
     evidence_id: str,
     session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> None:
     try:
         eid = uuid.UUID(engagement_id)
@@ -240,7 +281,7 @@ async def delete_evidence(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid UUID")
     record = await session.get(EvidenceRecord, evd_id)
-    if not record or record.engagement_id != eid:
+    if not record or record.engagement_id != eid or record.tenant_id != auth.tenant_id:
         raise HTTPException(status_code=404, detail="Evidence not found")
 
     # M-9 FIX: sealed engagements are WORM — no mutations allowed
