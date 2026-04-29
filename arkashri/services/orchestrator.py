@@ -153,6 +153,11 @@ async def execute_run(session: AsyncSession, run: AuditRun, *, max_steps: int = 
         run.started_at = now
 
     run.status = AuditRunStatus.RUNNING
+    try:
+        from arkashri.main import app as _app
+        redis_pool = getattr(_app.state, "redis_pool", None)
+    except Exception:
+        redis_pool = None
 
     for step in steps:
         if executed_steps >= max_steps:

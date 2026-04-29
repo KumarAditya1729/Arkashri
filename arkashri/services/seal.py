@@ -19,9 +19,10 @@ import datetime   # C-5 FIX: was missing
 import hashlib    # C-5 FIX: was missing
 import logging
 import uuid       # C-5 FIX: was missing
+
+from arkashri import SYSTEM_VERSION  # L-10: single source of truth
 from decimal import Decimal
 
-from arkashri import SYSTEM_VERSION
 from arkashri.services.canonical import hash_object, canonical_json_bytes
 
 from cryptography.hazmat.primitives.asymmetric import ec

@@ -47,6 +47,7 @@ from arkashri.routers.judgments import router as judgments_router
 from arkashri.routers.client_portal import router as client_portal_router
 from arkashri.routers.reporting import router as reporting_router
 from arkashri.services.health import get_full_health_status
+from arkashri.middleware.idempotency import IdempotencyMiddleware
 
 # Import production middleware
 from arkashri.middleware.correlation import CorrelationMiddleware
@@ -64,7 +65,6 @@ from arkashri.middleware.security import (
     ThreatDetectionMiddleware
 )
 from arkashri.middleware.rate_limiting import ProductionRateLimitMiddleware
-from arkashri.middleware.idempotency import IdempotencyMiddleware
 # Import production services
 from arkashri.logging_config import setup_logging, performance_logger
 from arkashri.db import db_manager
@@ -250,9 +250,9 @@ if settings.enable_compression:
 # app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # app.add_middleware(SlowAPIMiddleware)
 
-# Session middleware — re-enabled (M4 fix)
-# SessionMiddleware is WebSocket-safe; it only reads/writes cookies and does
-# NOT wrap WebSocket upgrades like BaseHTTPMiddleware does.
+# Session middleware — re-enabled (M4 fix). SessionMiddleware is WebSocket-safe;
+# it only reads/writes cookies and does NOT wrap WebSocket upgrades like
+# BaseHTTPMiddleware does.
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.session_secret_key,

@@ -149,6 +149,14 @@ async def query_knowledge(
 
     # Optimization: Filter by keywords in SQL to reduce OOM risk
     # Only load top 500 potential matches into memory for ranking
+    stmt = (
+        select(KnowledgeChunk, KnowledgeDocument)
+        .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
+        .where(
+            KnowledgeDocument.jurisdiction == jurisdiction,
+            KnowledgeDocument.is_active.is_(True),
+        )
+    )
     query_terms = [t for t in query_token_set if len(t) > 3]
     if query_terms:
         # Simple ilike check for at least one significant term to reduce candidate pool
@@ -156,7 +164,7 @@ async def query_knowledge(
         filters = [KnowledgeChunk.chunk_text.ilike(f"%{term}%") for term in query_terms[:3]]
         stmt = stmt.where(or_(*filters))
 
-    stmt = stmt.limit(1000) # Safety cap
+    stmt = stmt.limit(1000)  # Safety cap
     result = await session.execute(stmt)
     candidates = result.all()
 

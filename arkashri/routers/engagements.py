@@ -31,12 +31,12 @@ from arkashri.services.engagement import (
 )
 from arkashri.services.opinion import generate_draft_opinion
 from arkashri.services.seal import generate_audit_seal
+from arkashri.services.audit_log import log_system_event
 from arkashri.services.esg import upsert_esg_metrics
 from arkashri.services.forensic import upsert_forensic_profile
 from arkashri.services.engagement_workflow import (
     transition_engagement, WorkflowViolation, EngagementStatus
 )
-from arkashri.services.audit_log import log_system_event
 from arkashri.dependencies import require_api_client, AuthContext
 
 
