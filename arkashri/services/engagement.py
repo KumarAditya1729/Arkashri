@@ -102,7 +102,11 @@ async def create_engagement(session: AsyncSession, payload: EngagementCreate) ->
                     kyc_cleared = data.get("kyc_cleared", True)
                     conflict_notes = data.get("notes", "Webhook check completed.")
             except Exception as exc:
-                logger.warning("independence_webhook_failed", error=str(exc), tenant_id=payload.tenant_id)
+                logger.warning(
+                    "independence_webhook_failed error=%s tenant_id=%s",
+                    str(exc),
+                    payload.tenant_id,
+                )
                 raise ValueError("Independence verification failed and no manual verification result was supplied.") from exc
         else:
             # No webhook configured — default to cleared (admin is responsible for manual verification)
@@ -159,6 +163,7 @@ async def create_engagement(session: AsyncSession, payload: EngagementCreate) ->
 
     # Automatically capture the active regulatory ruleset (RulesSnapshot)
     # This is optional — engagement creation succeeds even if snapshot fails
+    engagement_id = engagement.id
     try:
         from arkashri.models import RulesSnapshot, RegulatoryDocument
         import hashlib
@@ -186,9 +191,16 @@ async def create_engagement(session: AsyncSession, payload: EngagementCreate) ->
         session.add(snapshot)
         await session.commit()
     except Exception as snap_exc:
-        logger.warning("rules_snapshot_failed", error=str(snap_exc), engagement_id=str(engagement.id))
+        logger.warning(
+            "rules_snapshot_failed error=%s engagement_id=%s",
+            str(snap_exc),
+            str(engagement_id),
+        )
         # Roll back only the snapshot, not the engagement itself
         await session.rollback()
+        refreshed = await session.get(Engagement, engagement_id)
+        if refreshed is not None:
+            engagement = refreshed
 
     return engagement
 

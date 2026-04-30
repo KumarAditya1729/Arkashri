@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 import pytest
 
 from arkashri.models import Engagement  # noqa: F401 - ensures SQLAlchemy metadata is registered
+from arkashri.schemas import EngagementCreate
+from arkashri.services.engagement import create_engagement
 
 
 @pytest.mark.asyncio
@@ -102,3 +104,28 @@ async def test_rejects_unsupported_audit_type(async_client, monkeypatch) -> None
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_engagement_survives_optional_rules_snapshot_failure(db_session, monkeypatch) -> None:
+    async def fail_snapshot_lookup(*_args, **_kwargs):
+        raise RuntimeError("simulated snapshot storage outage")
+
+    monkeypatch.setattr(db_session, "scalars", fail_snapshot_lookup)
+
+    engagement = await create_engagement(
+        db_session,
+        EngagementCreate(
+            tenant_id="default_tenant",
+            jurisdiction="IN",
+            client_name="Snapshot Failure Private Limited",
+            engagement_type="STATUTORY_AUDIT",
+            auditType="statutory_audit",
+            independence_cleared=True,
+            kyc_cleared=True,
+        ),
+    )
+
+    assert engagement.id is not None
+    assert engagement.client_name == "Snapshot Failure Private Limited"
+    assert engagement.audit_type.value == "statutory_audit"
