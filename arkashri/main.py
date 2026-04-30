@@ -360,6 +360,7 @@ async def health(db: AsyncSession = Depends(get_session)):
     return JSONResponse(
         status_code=503 if health_status["status"] == "unhealthy" else 200,
         content=health_status,
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -369,7 +370,7 @@ async def readyz():
     Lightweight readiness probe — returns 200 immediately if app is running.
     Does not depend on DB/Redis to prevent false negatives.
     """
-    return JSONResponse(status_code=200, content={"status": "ready"})
+    return JSONResponse(status_code=200, content={"status": "ready"}, headers={"Cache-Control": "no-store"})
 
 # ── Enhanced Metrics endpoint — ADMIN only ──────────────────────────────────
 @app.get("/metrics/detailed", include_in_schema=False)
