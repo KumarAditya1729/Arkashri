@@ -32,14 +32,20 @@ async def check_redis() -> bool:
         return False
 
 async def check_openai() -> bool:
-    """Checks if OpenAI is reachable and the API key is valid (via a cheap models list call)."""
+    """Checks if the configured OpenAI-compatible provider can serve the selected model."""
     if not settings.openai_api_key:
         return False
     try:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
-        # We don't want to burn tokens, so just list models which is free/low-cost & verifies key/connectivity
-        await client.models.list()
+        # Groq and other OpenAI-compatible providers may not support models.list()
+        # consistently, so use the same chat path the app relies on with 1 token.
+        await client.chat.completions.create(
+            model=settings.ai_model_primary,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=1,
+            temperature=0,
+        )
         return True
     except Exception as e:
         logger.error("health_check_openai_failed", error=str(e))
