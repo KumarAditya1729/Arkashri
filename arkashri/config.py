@@ -94,6 +94,7 @@ class Settings(BaseSettings):
 
     # ── Artificial Intelligence Fabric (OpenAI) ───────────────────────────────
     openai_api_key: str | None = None
+    openai_base_url: str | None = None
     ai_model_primary: str = "gpt-4-turbo"
     ai_model_fallback: str = "gpt-4o"
     ai_confidence_threshold: float = 0.85
@@ -148,7 +149,7 @@ class Settings(BaseSettings):
     
     # Security headers
     allowed_hosts: str = "*"
-    cors_origins: list[str] = [
+    cors_origins: str | list[str] = [
         # Local development
         "http://127.0.0.1:5173", "http://localhost:5173",
         "http://127.0.0.1:4173", "http://localhost:4173",
@@ -159,6 +160,18 @@ class Settings(BaseSettings):
         # Railway backend url (for inter-service calls)
         "https://arkashri-production-95ea.up.railway.app",
     ]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: str | list[str] | None) -> list[str] | None:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("["):
+                return value
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        return value
     
     # Graceful shutdown
     shutdown_timeout: int = 30

@@ -16,7 +16,7 @@ try:
     from openai import AsyncOpenAI
     # Initialize a singleton client if the API key is present
     if settings.openai_api_key:
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
     else:
         client = None
 except ImportError:

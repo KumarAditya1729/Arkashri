@@ -37,7 +37,7 @@ async def check_openai() -> bool:
         return False
     try:
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        client = AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
         # We don't want to burn tokens, so just list models which is free/low-cost & verifies key/connectivity
         await client.models.list()
         return True
