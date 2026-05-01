@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from arkashri.db import get_session
-from arkashri.models import ClientRole, Engagement, ControlEntry, ControlStatus, ControlType
+from arkashri.models import ClientRole, Engagement, ControlEntry, ControlStatus, ControlType, RiskEntry
 from arkashri.dependencies import require_api_client, AuthContext
 
 router = APIRouter()
@@ -36,9 +36,9 @@ class ControlCreate(BaseModel):
 
 class ControlOut(BaseModel):
     model_config = {"from_attributes": True}
-    id: str
-    engagement_id: str
-    risk_id: str | None
+    id: uuid.UUID
+    engagement_id: uuid.UUID
+    risk_id: uuid.UUID | None
     title: str
     area: str
     control_type: ControlType
@@ -79,10 +79,19 @@ async def create_control(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
     await _get_tenant_engagement_or_404(session, eid, _auth)
+    risk_id = None
+    if payload.risk_id:
+        try:
+            risk_id = uuid.UUID(payload.risk_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid risk_id UUID")
+        risk = await session.get(RiskEntry, risk_id)
+        if not risk or risk.engagement_id != eid or risk.tenant_id != _auth.tenant_id:
+            raise HTTPException(status_code=404, detail="Risk not found")
 
     entry = ControlEntry(
         engagement_id = eid,
-        risk_id       = uuid.UUID(payload.risk_id) if payload.risk_id else None,
+        risk_id       = risk_id,
         title         = payload.title,
         area          = payload.area,
         control_type  = payload.control_type,

@@ -121,6 +121,73 @@ async def test_engagement_subresources_are_tenant_scoped(async_client, monkeypat
     )
     assert blocked_phase.status_code == 404, blocked_phase.text
 
+    blocked_coverage = await async_client.get(
+        "/api/v1/metrics/coverage/tenant_a/IN",
+        headers={"X-Arkashri-Tenant": "tenant_b"},
+    )
+    assert blocked_coverage.status_code == 403, blocked_coverage.text
+
+
+@pytest.mark.asyncio
+async def test_controls_cannot_link_risks_from_another_engagement(async_client, monkeypatch) -> None:
+    monkeypatch.setattr("arkashri.dependencies.settings.auth_enforced", False)
+
+    first = await async_client.post(
+        "/api/v1/engagements/engagements",
+        headers={"X-Arkashri-Tenant": "tenant_control_scope"},
+        json={
+            "tenant_id": "tenant_control_scope",
+            "jurisdiction": "IN",
+            "client_name": "Control Scope One Private Limited",
+            "engagement_type": "STATUTORY_AUDIT",
+            "auditType": "statutory_audit",
+            "independence_cleared": True,
+            "kyc_cleared": True,
+        },
+    )
+    assert first.status_code == 201, first.text
+    first_id = first.json()["id"]
+
+    second = await async_client.post(
+        "/api/v1/engagements/engagements",
+        headers={"X-Arkashri-Tenant": "tenant_control_scope"},
+        json={
+            "tenant_id": "tenant_control_scope",
+            "jurisdiction": "IN",
+            "client_name": "Control Scope Two Private Limited",
+            "engagement_type": "STATUTORY_AUDIT",
+            "auditType": "statutory_audit",
+            "independence_cleared": True,
+            "kyc_cleared": True,
+        },
+    )
+    assert second.status_code == 201, second.text
+    second_id = second.json()["id"]
+
+    risk = await async_client.post(
+        f"/api/v1/engagements/{first_id}/risks",
+        headers={"X-Arkashri-Tenant": "tenant_control_scope"},
+        json={
+            "title": "Revenue recognition cut-off",
+            "area": "Revenue",
+            "likelihood": "HIGH",
+            "impact": "HIGH",
+        },
+    )
+    assert risk.status_code == 201, risk.text
+
+    blocked_control = await async_client.post(
+        f"/api/v1/engagements/{second_id}/controls",
+        headers={"X-Arkashri-Tenant": "tenant_control_scope"},
+        json={
+            "title": "Monthly revenue review",
+            "area": "Revenue",
+            "control_type": "DETECTIVE",
+            "risk_id": risk.json()["id"],
+        },
+    )
+    assert blocked_control.status_code == 404, blocked_control.text
+
 
 @pytest.mark.asyncio
 async def test_update_engagement_workflow_persists_progress(async_client, monkeypatch) -> None:

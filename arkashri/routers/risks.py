@@ -35,8 +35,8 @@ class RiskStatusUpdate(BaseModel):
 
 class RiskOut(BaseModel):
     model_config = {"from_attributes": True}
-    id:          str
-    engagement_id: str
+    id:          uuid.UUID
+    engagement_id: uuid.UUID
     risk_ref:    str
     title:       str
     area:        str

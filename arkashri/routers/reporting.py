@@ -14,7 +14,8 @@ from fastapi_cache.decorator import cache
 from arkashri.db import get_session
 from arkashri.models import (
     ClientRole, ReportJob,
-    AuditRunStep, AuditStepStatus, Decision, ApprovalRequest, ApprovalStatus, ExceptionCase,
+    AuditRun, AuditRunStep, AuditStepStatus, Decision, ApprovalRequest, ApprovalStatus, ExceptionCase,
+    Transaction,
 )
 from arkashri.services.disclaimer import attach_disclaimer
 from arkashri.schemas import (
@@ -87,12 +88,21 @@ async def generate_audit_report(
     now          = datetime.now(timezone.utc)
 
     # ── 1. Decisions summary ──────────────────────────────────────────────────
-    from arkashri.models import Decision, Transaction
-    total_decisions = (await session.scalar(select(func.count(Decision.id)))) or 0
-    high_risk = (await session.scalar(
-        select(func.count(Decision.id)).where(Decision.final_risk >= 0.7)
+    total_decisions = (await session.scalar(
+        select(func.count(Decision.id))
+        .join(Transaction, Decision.transaction_id == Transaction.id)
+        .where(Transaction.tenant_id == tenant_id)
     )) or 0
-    avg_risk = float((await session.scalar(select(func.avg(Decision.final_risk)))) or 0.0)
+    high_risk = (await session.scalar(
+        select(func.count(Decision.id))
+        .join(Transaction, Decision.transaction_id == Transaction.id)
+        .where(Transaction.tenant_id == tenant_id, Decision.final_risk >= 0.7)
+    )) or 0
+    avg_risk = float((await session.scalar(
+        select(func.avg(Decision.final_risk))
+        .join(Transaction, Decision.transaction_id == Transaction.id)
+        .where(Transaction.tenant_id == tenant_id)
+    )) or 0.0)
     total_txn = (await session.scalar(
         select(func.count(Transaction.id)).where(Transaction.tenant_id == tenant_id)
     )) or 0
@@ -455,7 +465,7 @@ async def get_automation_score(
     tenant_id: str = Query(default="default_tenant"),
     jurisdiction: str = Query(default="IN"),
     session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({
+    auth: AuthContext = Depends(require_api_client({
         ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY
     })),
 ) -> AutomationScoreOut:
@@ -474,33 +484,61 @@ async def get_automation_score(
     """
     from datetime import datetime, timezone
 
+    if tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     now_str = datetime.now(timezone.utc).isoformat()
 
     # 1. Decision coverage
-    total_decisions = (await session.scalar(select(func.count(Decision.id)))) or 0
+    total_decisions = (await session.scalar(
+        select(func.count(Decision.id))
+        .join(Transaction, Decision.transaction_id == Transaction.id)
+        .where(Transaction.tenant_id == tenant_id)
+    )) or 0
 
     # 2. AuditRun step completion
-    total_steps     = (await session.scalar(select(func.count(AuditRunStep.id)))) or 0
+    total_steps = (await session.scalar(
+        select(func.count(AuditRunStep.id))
+        .join(AuditRun, AuditRunStep.run_id == AuditRun.id)
+        .where(AuditRun.tenant_id == tenant_id)
+    )) or 0
     succeeded_steps = (await session.scalar(
-        select(func.count(AuditRunStep.id)).where(AuditRunStep.status == AuditStepStatus.COMPLETED)
+        select(func.count(AuditRunStep.id))
+        .join(AuditRun, AuditRunStep.run_id == AuditRun.id)
+        .where(
+            AuditRun.tenant_id == tenant_id,
+            AuditRunStep.status == AuditStepStatus.COMPLETED,
+        )
     )) or 0
 
     # 3. Approval auto-clearance
-    total_approvals = (await session.scalar(select(func.count(ApprovalRequest.id)))) or 0
+    total_approvals = (await session.scalar(
+        select(func.count(ApprovalRequest.id)).where(ApprovalRequest.tenant_id == tenant_id)
+    )) or 0
     auto_approvals  = (await session.scalar(
-        select(func.count(ApprovalRequest.id)).where(ApprovalRequest.status == ApprovalStatus.APPROVED)
+        select(func.count(ApprovalRequest.id)).where(
+            ApprovalRequest.tenant_id == tenant_id,
+            ApprovalRequest.status == ApprovalStatus.APPROVED,
+        )
     )) or 0
 
     # 4. Exception auto-triage
     from arkashri.models import ExceptionStatus
-    total_exc = (await session.scalar(select(func.count(ExceptionCase.id)))) or 0
+    total_exc = (await session.scalar(
+        select(func.count(ExceptionCase.id)).where(ExceptionCase.tenant_id == tenant_id)
+    )) or 0
     auto_exc  = (await session.scalar(
-        select(func.count(ExceptionCase.id)).where(ExceptionCase.status == ExceptionStatus.RESOLVED)
+        select(func.count(ExceptionCase.id)).where(
+            ExceptionCase.tenant_id == tenant_id,
+            ExceptionCase.status == ExceptionStatus.RESOLVED,
+        )
     )) or 0
 
     # 5. Risk quantification
     risk_scored = (await session.scalar(
-        select(func.count(Decision.id)).where(Decision.final_risk.isnot(None))
+        select(func.count(Decision.id))
+        .join(Transaction, Decision.transaction_id == Transaction.id)
+        .where(Transaction.tenant_id == tenant_id, Decision.final_risk.isnot(None))
     )) or 0
 
     def _dim(
@@ -564,8 +602,10 @@ async def get_coverage(
     tenant_id: str,
     jurisdiction: str,
     session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> CoverageOut:
+    if tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     tx_recv, dec_comp, rate = await _coverage_counts(session, tenant_id, jurisdiction)
     return CoverageOut(
         tenant_id=tenant_id,
@@ -582,8 +622,10 @@ async def get_scorecard(
     tenant_id: str,
     jurisdiction: str,
     session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> dict[str, Any]:
+    if tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     stats = await compute_scorecard(session, tenant_id, jurisdiction)
     return asdict(stats)
 
@@ -596,8 +638,10 @@ async def list_reports(
     jurisdiction: str,
     limit: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> list[ReportJob]:
+    if tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied")
     stmt = (
         select(ReportJob)
         .where(ReportJob.tenant_id == tenant_id, ReportJob.jurisdiction == jurisdiction)

@@ -30,6 +30,7 @@ from arkashri.models import (
     Engagement, EngagementStatus,
     AuditOpinion,
     Decision,
+    Transaction,
     DecisionOverride,
     ExceptionCase,
     SealSession, SealSessionStatus,
@@ -141,6 +142,17 @@ async def _get_session_or_404(session: AsyncSession, session_id: str) -> SealSes
     return obj
 
 
+async def _get_session_engagement_or_404(
+    session: AsyncSession,
+    seal_session: SealSession,
+    auth: AuthContext,
+) -> Engagement:
+    engagement = await session.get(Engagement, seal_session.engagement_id)
+    if not engagement or engagement.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return engagement
+
+
 # ─── 1. Create SealSession ────────────────────────────────────────────────────
 
 @router.post(
@@ -162,7 +174,7 @@ async def create_seal_session(
     except ValueError:
         raise HTTPException(422, "Invalid engagement_id UUID format.")
     eng = (await db.scalars(select(Engagement).where(Engagement.id == eid))).first()
-    if not eng:
+    if not eng or eng.tenant_id != auth.tenant_id:
         raise HTTPException(404, "Engagement not found.")
     if eng.sealed_at:
         raise HTTPException(409, f"Engagement already sealed at {eng.sealed_at.isoformat()}.")
@@ -248,7 +260,7 @@ async def create_seal_session(
 async def get_seal_session(
     engagement_id: str,
     db: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> SealSessionOut:
     try:
         eid = uuid.UUID(engagement_id)
@@ -262,6 +274,7 @@ async def get_seal_session(
     )).first()
     if not sess:
         raise HTTPException(404, "No active SealSession for this engagement.")
+    await _get_session_engagement_or_404(db, sess, auth)
     await db.refresh(sess)
     return _to_session_out(sess)
 
@@ -276,12 +289,10 @@ async def get_seal_session(
 async def get_pre_sign_summary(
     session_id: str,
     db: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
 ) -> PreSignSummary:
     seal_sess = await _get_session_or_404(db, session_id)
-    eng = (await db.scalars(select(Engagement).where(Engagement.id == seal_sess.engagement_id))).first()
-    if not eng:
-        raise HTTPException(404, "Engagement not found")
+    eng = await _get_session_engagement_or_404(db, seal_sess, auth)
 
     opinion = (await db.scalars(
         select(AuditOpinion)
@@ -292,7 +303,8 @@ async def get_pre_sign_summary(
     # Counts
     total_decisions = (await db.scalar(
         select(func.count(Decision.id))
-        .where(Decision.transaction.has(tenant_id=eng.tenant_id))
+        .join(Transaction, Decision.transaction_id == Transaction.id)
+        .where(Transaction.tenant_id == eng.tenant_id)
     )) or 0
     exceptions = (await db.scalars(
         select(ExceptionCase).where(
@@ -349,6 +361,7 @@ async def sign_seal_session(
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> SealSessionOut:
     seal_sess = await _get_session_or_404(db, session_id)
+    eng = await _get_session_engagement_or_404(db, seal_sess, auth)
 
     if seal_sess.status == SealSessionStatus.FULLY_SIGNED:
         raise HTTPException(409, "SealSession is already FULLY_SIGNED.")
@@ -372,9 +385,6 @@ async def sign_seal_session(
         raise HTTPException(409, f"You ({authenticated_user_id}) have already signed this session.")
 
     # Enforce override acknowledgement for sessions with known overrides
-    eng = (await db.scalars(select(Engagement).where(Engagement.id == seal_sess.engagement_id))).first()
-    if not eng:
-        raise HTTPException(404, "Engagement not found")
     override_count = (await db.scalar(
         select(func.count(DecisionOverride.id)).where(DecisionOverride.tenant_id == eng.tenant_id)
     )) or 0
@@ -457,9 +467,10 @@ async def withdraw_signature(
     sig_id: str,
     payload: WithdrawRequest,
     db: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> SealSessionOut:
     seal_sess = await _get_session_or_404(db, session_id)
+    await _get_session_engagement_or_404(db, seal_sess, auth)
 
     if seal_sess.status == SealSessionStatus.WITHDRAWN:
         raise HTTPException(409, "Seal session is already withdrawn.")
@@ -492,7 +503,7 @@ async def withdraw_signature(
     # Log the withdrawal
     await log_system_event(
         db,
-        tenant_id=_auth.tenant_id,
+        tenant_id=auth.tenant_id,
         user_id=None,
         user_email=sig.partner_email,
         action="PARTNER_SIGNATURE_WITHDRAWN",
