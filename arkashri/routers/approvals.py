@@ -35,13 +35,14 @@ async def create_approval_request(
 ) -> ApprovalRequest:
     if payload.requested_by != auth.client_name:
         raise HTTPException(status_code=403, detail="requested_by must match authenticated API client")
+    tenant_id = auth.tenant_id
     if payload.step_id is not None:
         step = await session.scalar(select(AuditRunStep).where(AuditRunStep.id == payload.step_id))
         if step is None:
             raise HTTPException(status_code=404, detail="Referenced run step not found")
 
     request = ApprovalRequest(
-        tenant_id=payload.tenant_id,
+        tenant_id=tenant_id,
         jurisdiction=payload.jurisdiction,
         request_type=payload.request_type,
         reference_type=payload.reference_type,
@@ -68,7 +69,7 @@ async def create_approval_request(
 
     await _append_and_publish_audit(
         session,
-        tenant_id=payload.tenant_id,
+        tenant_id=tenant_id,
         jurisdiction=payload.jurisdiction,
         event_type="APPROVAL_REQUEST_CREATED",
         entity_type="approval_request",
@@ -99,6 +100,9 @@ async def list_approval_requests(
         require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})
     ),
 ) -> list[ApprovalRequestOut]:
+    if tenant_id != _auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     stmt = select(ApprovalRequest).where(
         ApprovalRequest.tenant_id == tenant_id,
         ApprovalRequest.jurisdiction == jurisdiction,
@@ -125,6 +129,8 @@ async def action_approval_request(
 ) -> ApprovalRequest:
     request = await _load_approval_with_actions(session, request_id)
     if request is None:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+    if request.tenant_id != auth.tenant_id:
         raise HTTPException(status_code=404, detail="Approval request not found")
 
     if request.status in (ApprovalStatus.APPROVED, ApprovalStatus.REJECTED):
@@ -193,6 +199,9 @@ async def escalate_overdue_approvals(
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.REVIEWER})),
 ) -> ApprovalEscalationResponse:
+    if tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=threshold_minutes)
 
     stmt = select(ApprovalRequest).where(

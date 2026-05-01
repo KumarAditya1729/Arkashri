@@ -8,10 +8,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from arkashri.db import get_session
-from arkashri.models import ClientRole, EngagementPhase, TeamMember, PhaseStatus
+from arkashri.models import ClientRole, Engagement, EngagementPhase, TeamMember, PhaseStatus
 from arkashri.dependencies import require_api_client, AuthContext
 
 router = APIRouter()
+
+
+async def _ensure_tenant_engagement(
+    session: AsyncSession,
+    engagement_id: uuid.UUID,
+    auth: AuthContext,
+) -> None:
+    engagement = await session.get(Engagement, engagement_id)
+    if not engagement or engagement.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=404, detail="Engagement not found")
 
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +71,7 @@ async def list_phases(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    await _ensure_tenant_engagement(session, eid, _auth)
     stmt = select(EngagementPhase).where(EngagementPhase.engagement_id == eid)
     return [PhaseOut.model_validate(x) for x in await session.scalars(stmt)]
 
@@ -76,6 +87,7 @@ async def create_phase(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    await _ensure_tenant_engagement(session, eid, _auth)
     entry = EngagementPhase(
         engagement_id = eid,
         name          = payload.name,
@@ -101,6 +113,7 @@ async def list_team(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    await _ensure_tenant_engagement(session, eid, _auth)
     stmt = select(TeamMember).where(TeamMember.engagement_id == eid)
     return [TeamMemberOut.model_validate(x) for x in await session.scalars(stmt)]
 
@@ -116,6 +129,7 @@ async def add_team_member(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    await _ensure_tenant_engagement(session, eid, _auth)
     entry = TeamMember(
         engagement_id = eid,
         name          = payload.name,

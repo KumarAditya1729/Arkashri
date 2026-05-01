@@ -157,7 +157,10 @@ async def upload_evidence(
     # MAX(evd_ref) + 1 pattern is safe when combined with DB-level uniqueness.
     from sqlalchemy import func as _func
     max_ref_result = await session.scalar(
-        select(_func.max(EvidenceRecord.evd_ref)).where(EvidenceRecord.engagement_id == eid)
+        select(_func.max(EvidenceRecord.evd_ref)).where(
+            EvidenceRecord.engagement_id == eid,
+            EvidenceRecord.tenant_id == auth.tenant_id,
+        )
     )
     if max_ref_result and max_ref_result.startswith("EVD-"):
         try:

@@ -40,10 +40,15 @@ async def get_contextual_lens(
         engagement = await session.get(Engagement, eid)
         if not engagement:
             raise HTTPException(status_code=404, detail="Engagement not found")
+        if engagement.tenant_id != current_user.get("tenant_id"):
+            raise HTTPException(status_code=404, detail="Engagement not found")
             
         # Count risks for context
         risk_count_query = await session.execute(
-            select(func.count(RiskEntry.id)).where(RiskEntry.engagement_id == eid)
+            select(func.count(RiskEntry.id)).where(
+                RiskEntry.engagement_id == eid,
+                RiskEntry.tenant_id == current_user.get("tenant_id"),
+            )
         )
         total_risks = risk_count_query.scalar_one_or_none() or 0
 
@@ -184,13 +189,23 @@ async def get_analytics_overview(
 ):
     """Get analytics overview summary"""
     try:
-        total_anomalies = int(await session.scalar(select(func.count(RiskEntry.id))) or 0)
+        tenant_id = current_user.get("tenant_id")
+        total_anomalies = int(
+            await session.scalar(select(func.count(RiskEntry.id)).where(RiskEntry.tenant_id == tenant_id)) or 0
+        )
         high_severity = int(
-            await session.scalar(select(func.count(RiskEntry.id)).where(RiskEntry.risk_score >= 0.8)) or 0
+            await session.scalar(
+                select(func.count(RiskEntry.id)).where(
+                    RiskEntry.tenant_id == tenant_id,
+                    RiskEntry.risk_score >= 0.8,
+                )
+            )
+            or 0
         )
         medium_severity = int(
             await session.scalar(
                 select(func.count(RiskEntry.id)).where(
+                    RiskEntry.tenant_id == tenant_id,
                     RiskEntry.risk_score >= 0.5,
                     RiskEntry.risk_score < 0.8,
                 )
@@ -212,14 +227,19 @@ async def get_analytics_overview(
         upcoming_risks = int(
             await session.scalar(
                 select(func.count(RiskEntry.id)).where(
+                    RiskEntry.tenant_id == tenant_id,
                     RiskEntry.risk_status.in_([RiskStatus.OPEN, RiskStatus.IN_REVIEW]),
                     RiskEntry.risk_score >= 0.8,
                 )
             )
             or 0
         )
-        documents_analyzed = int(await session.scalar(select(func.count(EvidenceRecord.id))) or 0)
-        total_reports = int(await session.scalar(select(func.count(ReportJob.id))) or 0)
+        documents_analyzed = int(
+            await session.scalar(select(func.count(EvidenceRecord.id)).where(EvidenceRecord.tenant_id == tenant_id)) or 0
+        )
+        total_reports = int(
+            await session.scalar(select(func.count(ReportJob.id)).where(ReportJob.tenant_id == tenant_id)) or 0
+        )
 
         model_accuracy = None
         if latest_risk_model and isinstance(latest_risk_model.metrics, dict):

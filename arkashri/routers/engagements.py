@@ -46,6 +46,22 @@ class EngagementStatusUpdate(BaseModel):
 
 router = APIRouter()
 
+
+def _auth_actor_id(auth: AuthContext) -> str:
+    return str(auth.client_id or auth.client_name)
+
+
+async def _get_tenant_engagement_or_404(
+    session: AsyncSession,
+    engagement_id: uuid.UUID,
+    auth: AuthContext,
+) -> Engagement:
+    engagement = await get_engagement(session, engagement_id)
+    if not engagement or engagement.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return engagement
+
+
 @router.post("/engagements", response_model=EngagementOut, status_code=status.HTTP_201_CREATED)
 async def create_new_engagement(
     payload: EngagementCreate,
@@ -84,9 +100,7 @@ async def get_engagement_by_id(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
-    engagement = await get_engagement(session, eid)
-    if not engagement or engagement.tenant_id != _auth.tenant_id:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
     return EngagementOut.model_validate(engagement)
 
 
@@ -102,9 +116,7 @@ async def update_engagement_workflow_by_id(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID") from None
 
-    engagement = await get_engagement(session, eid)
-    if not engagement or engagement.tenant_id != _auth.tenant_id:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
 
     updated = await update_engagement_workflow(session, engagement, payload)
     return EngagementOut.model_validate(updated)
@@ -121,9 +133,7 @@ async def generate_materiality(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
-    engagement = await get_engagement(session, eid)
-    if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
         
     materiality = await compute_materiality(
         session,
@@ -146,9 +156,7 @@ async def generate_opinion(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
-    engagement = await get_engagement(session, eid)
-    if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
         
     opinion = await generate_draft_opinion(
         session,
@@ -174,14 +182,15 @@ async def seal_engagement(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
     try:
+        await _get_tenant_engagement_or_404(session, eid, _auth)
         seal_bundle = await generate_audit_seal(session, eid)
         
         # 🔗 Audit Proof: Log the seal operation with a cryptographic signature
         await log_system_event(
             session,
             tenant_id=_auth.tenant_id,
-            user_id=_auth.user_id,
-            user_email=_auth.email,
+            user_id=None,
+            user_email=_auth.client_name,
             action="ENGAGEMENT_SEALED",
             resource_type="ENGAGEMENT",
             resource_id=str(eid),
@@ -211,9 +220,7 @@ async def upsert_engagement_esg(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
-    engagement = await get_engagement(session, eid)
-    if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
     record = await upsert_esg_metrics(
         session,
         engagement_id=eid,
@@ -240,9 +247,7 @@ async def upsert_engagement_forensic(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
-    engagement = await get_engagement(session, eid)
-    if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
     record = await upsert_forensic_profile(
         session,
         engagement_id=eid,
@@ -270,19 +275,20 @@ async def transition_engagement_endpoint(
     """
     try:
         eid = uuid.UUID(engagement_id)
+        await _get_tenant_engagement_or_404(session, eid, _auth)
         engagement = await transition_engagement(
             session, 
             engagement_id=eid, 
             target_status=payload.status,
-            actor_id=str(_auth.user_id)
+            actor_id=_auth_actor_id(_auth)
         )
         
         # 🔗 Audit Proof: Log the transition
         await log_system_event(
             session,
             tenant_id=_auth.tenant_id,
-            user_id=_auth.user_id,
-            user_email=_auth.email,
+            user_id=None,
+            user_email=_auth.client_name,
             action="WORKFLOW_TRANSITION",
             resource_type="ENGAGEMENT",
             resource_id=str(eid),

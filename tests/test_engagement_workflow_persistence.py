@@ -76,6 +76,53 @@ async def test_create_engagement_uses_authenticated_tenant_for_listing(async_cli
 
 
 @pytest.mark.asyncio
+async def test_engagement_subresources_are_tenant_scoped(async_client, monkeypatch) -> None:
+    monkeypatch.setattr("arkashri.dependencies.settings.auth_enforced", False)
+
+    created = await async_client.post(
+        "/api/v1/engagements/engagements",
+        headers={"X-Arkashri-Tenant": "tenant_a"},
+        json={
+            "tenant_id": "tenant_a",
+            "jurisdiction": "IN",
+            "client_name": "Tenant Scoped Audit Private Limited",
+            "engagement_type": "STATUTORY_AUDIT",
+            "auditType": "statutory_audit",
+            "independence_cleared": True,
+            "kyc_cleared": True,
+        },
+    )
+    assert created.status_code == 201, created.text
+    engagement_id = created.json()["id"]
+
+    blocked_materiality = await async_client.post(
+        f"/api/v1/engagements/engagements/{engagement_id}/materiality",
+        headers={"X-Arkashri-Tenant": "tenant_b"},
+        json={
+            "basis": "REVENUE",
+            "basis_amount": 1_000_000,
+            "overall_percentage": 5,
+            "performance_percentage": 75,
+            "trivial_threshold_percentage": 5,
+        },
+    )
+    assert blocked_materiality.status_code == 404, blocked_materiality.text
+
+    blocked_risks = await async_client.get(
+        f"/api/v1/engagements/{engagement_id}/risks",
+        headers={"X-Arkashri-Tenant": "tenant_b"},
+    )
+    assert blocked_risks.status_code == 404, blocked_risks.text
+
+    blocked_phase = await async_client.post(
+        f"/api/v1/engagements/{engagement_id}/phases",
+        headers={"X-Arkashri-Tenant": "tenant_b"},
+        json={"name": "Planning"},
+    )
+    assert blocked_phase.status_code == 404, blocked_phase.text
+
+
+@pytest.mark.asyncio
 async def test_update_engagement_workflow_persists_progress(async_client, monkeypatch) -> None:
     monkeypatch.setattr("arkashri.dependencies.settings.auth_enforced", False)
 

@@ -82,7 +82,7 @@ async def generate_audit_report(
         ExceptionCase, DecisionOverride, ERPSyncLog,
     )
 
-    tenant_id    = payload.tenant_id
+    tenant_id    = auth.tenant_id
     jurisdiction = payload.jurisdiction
     now          = datetime.now(timezone.utc)
 

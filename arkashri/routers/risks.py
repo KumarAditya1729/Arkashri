@@ -59,6 +59,17 @@ def _score(likelihood: RiskLikelihood, impact: RiskImpact) -> float:
     return min(_LIKELIHOOD_WEIGHT[likelihood] * _IMPACT_WEIGHT[impact] * 8.0, 99.0)
 
 
+async def _get_tenant_engagement_or_404(
+    session: AsyncSession,
+    engagement_id: uuid.UUID,
+    auth: AuthContext,
+) -> Engagement:
+    engagement = await session.get(Engagement, engagement_id)
+    if not engagement or engagement.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return engagement
+
+
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.get("/engagements/{engagement_id}/risks", response_model=list[RiskOut])
@@ -72,6 +83,7 @@ async def list_risks(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    await _get_tenant_engagement_or_404(session, eid, _auth)
     stmt = select(RiskEntry).where(RiskEntry.engagement_id == eid)
     if risk_status:
         stmt = stmt.where(RiskEntry.risk_status == risk_status) # type: ignore
@@ -91,10 +103,7 @@ async def create_risk(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
 
-    # Verify engagement exists
-    engagement = await session.get(Engagement, eid)
-    if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
 
     # Auto-generate RSK ref
     count_stmt = select(func.count()).select_from(
@@ -135,7 +144,7 @@ async def update_risk_status(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid UUID")
     entry = await session.get(RiskEntry, rid)
-    if not entry or entry.engagement_id != eid:
+    if not entry or entry.engagement_id != eid or entry.tenant_id != _auth.tenant_id:
         raise HTTPException(status_code=404, detail="Risk not found")
     entry.risk_status = payload.status # type: ignore
     entry.updated_at = datetime.now(timezone.utc) # type: ignore

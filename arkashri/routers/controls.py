@@ -13,6 +13,17 @@ from arkashri.dependencies import require_api_client, AuthContext
 
 router = APIRouter()
 
+
+async def _get_tenant_engagement_or_404(
+    session: AsyncSession,
+    engagement_id: uuid.UUID,
+    auth: AuthContext,
+) -> Engagement:
+    engagement = await session.get(Engagement, engagement_id)
+    if not engagement or engagement.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return engagement
+
 # ─── Schemas ─────────────────────────────────────────────────────────────────
 
 class ControlCreate(BaseModel):
@@ -51,6 +62,7 @@ async def list_controls(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
+    await _get_tenant_engagement_or_404(session, eid, _auth)
     stmt = select(ControlEntry).where(ControlEntry.engagement_id == eid)
     return [ControlOut.model_validate(x) for x in await session.scalars(stmt)]
 
@@ -66,10 +78,7 @@ async def create_control(
         eid = uuid.UUID(engagement_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
-    # Verify engagement exists
-    engagement = await session.get(Engagement, eid)
-    if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    await _get_tenant_engagement_or_404(session, eid, _auth)
 
     entry = ControlEntry(
         engagement_id = eid,
@@ -103,6 +112,7 @@ async def update_control_status(
     entry = await session.get(ControlEntry, cid)
     if not entry or entry.engagement_id != eid:
         raise HTTPException(status_code=404, detail="Control not found")
+    await _get_tenant_engagement_or_404(session, eid, _auth)
     
     entry.status = payload.status
     if payload.status == ControlStatus.EFFECTIVE:

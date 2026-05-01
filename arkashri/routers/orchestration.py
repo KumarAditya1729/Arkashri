@@ -30,10 +30,11 @@ async def create_orchestration_run(
 ) -> AuditRun:
     if payload.created_by != auth.client_name:
         raise HTTPException(status_code=403, detail="created_by must match authenticated API client")
+    tenant_id = auth.tenant_id
     try:
         run = await create_run_from_template(
             session,
-            tenant_id=payload.tenant_id,
+            tenant_id=tenant_id,
             jurisdiction=payload.jurisdiction,
             audit_type=payload.audit_type,
             created_by=payload.created_by,
@@ -41,7 +42,7 @@ async def create_orchestration_run(
         )
         await _append_and_publish_audit(
             session,
-            tenant_id=payload.tenant_id,
+            tenant_id=tenant_id,
             jurisdiction=payload.jurisdiction,
             event_type="ORCHESTRATION_RUN_CREATED",
             entity_type="audit_run",
@@ -99,6 +100,9 @@ async def list_orchestration_runs(
         require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})
     ),
 ) -> list[AuditRun]:
+    if tenant_id != _auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     run_ids = list(
         await session.scalars(
             select(AuditRun.id)
@@ -126,6 +130,8 @@ async def get_orchestration_run(
     run = await _load_run_with_steps(session, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Orchestration run not found")
+    if run.tenant_id != _auth.tenant_id:
+        raise HTTPException(status_code=404, detail="Orchestration run not found")
     return run
 
 
@@ -139,6 +145,8 @@ async def execute_orchestration_run(
 ) -> OrchestrationExecuteResponse:
     run = await session.scalar(select(AuditRun).where(AuditRun.id == run_id))
     if run is None:
+        raise HTTPException(status_code=404, detail="Orchestration run not found")
+    if run.tenant_id != _auth.tenant_id:
         raise HTTPException(status_code=404, detail="Orchestration run not found")
 
     redis = request.app.state.redis_pool
@@ -177,6 +185,8 @@ async def fetch_audit_report(
         
     stored = await _load_run_with_steps(session, run_uuid)
     if not stored:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if stored.tenant_id != _auth.tenant_id:
         raise HTTPException(status_code=404, detail="Run not found")
         
     run_dict = {
@@ -227,15 +237,15 @@ async def list_runs_by_engagement(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id format")
 
-    run_ids = list(await session.scalars(
+    candidate_ids = list(await session.scalars(
         select(AuditRun.id)
-        .where(AuditRun.engagement_id == eid)
+        .where(AuditRun.tenant_id == _auth.tenant_id)
         .order_by(AuditRun.created_at.desc())
         .limit(limit)
     ))
     runs: list[AuditRun] = []
-    for rid in run_ids:
+    for rid in candidate_ids:
         run = await _load_run_with_steps(session, rid)
-        if run is not None:
+        if run is not None and str((run.input_payload or {}).get("engagement_id")) == str(eid):
             runs.append(run)
     return runs

@@ -20,6 +20,22 @@ from arkashri.services.india_audit_workspace import (
 
 router = APIRouter(prefix="/v1/standards", tags=["Regulatory Standards"])
 
+
+def _auth_actor_id(auth: AuthContext) -> str:
+    return str(auth.client_id or auth.client_name)
+
+
+async def _get_tenant_engagement_or_404(
+    session: AsyncSession,
+    engagement_id: uuid.UUID,
+    auth: AuthContext,
+) -> Engagement:
+    engagement = await session.get(Engagement, engagement_id)
+    if not engagement or engagement.tenant_id != auth.tenant_id:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    return engagement
+
+
 @router.get("/sa")
 async def list_sa_standards(
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
@@ -33,6 +49,12 @@ async def create_engagement_sa_checklist(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> dict:
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID") from None
+
+    await _get_tenant_engagement_or_404(session, eid, _auth)
     checklist = await generate_sa_checklist(session, engagement_id)
     return {
         "engagement_id": engagement_id,
@@ -46,7 +68,13 @@ async def get_engagement_sa_checklist(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> dict:
-    items = (await session.scalars(select(SAChecklistItem).where(SAChecklistItem.engagement_id == engagement_id))).all()
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID") from None
+
+    await _get_tenant_engagement_or_404(session, eid, _auth)
+    items = (await session.scalars(select(SAChecklistItem).where(SAChecklistItem.engagement_id == eid))).all()
     return {
         "engagement_id": engagement_id,
         "items": [
@@ -78,7 +106,11 @@ async def update_sa_checklist_item(
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> dict:
     from arkashri.models import SAChecklistStatus
-    item = await session.scalar(select(SAChecklistItem).where(SAChecklistItem.id == item_id))
+    item = await session.scalar(
+        select(SAChecklistItem)
+        .join(Engagement, SAChecklistItem.engagement_id == Engagement.id)
+        .where(SAChecklistItem.id == item_id, Engagement.tenant_id == _auth.tenant_id)
+    )
     if not item:
         raise HTTPException(status_code=404, detail="Checklist item not found")
         
@@ -88,7 +120,7 @@ async def update_sa_checklist_item(
         raise HTTPException(status_code=400, detail="Invalid status")
         
     item.status = new_status
-    item.verified_by = _auth.user_id
+    item.verified_by = _auth_actor_id(_auth)
     item.verified_at = datetime.datetime.now(datetime.timezone.utc)
     
     session.add(item)
@@ -102,9 +134,12 @@ async def download_nfra_package(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
 ):
-    engagement = await session.scalar(select(Engagement).where(Engagement.id == engagement_id))
-    if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID") from None
+
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
         
     if engagement.status != EngagementStatus.SEALED:
         raise HTTPException(status_code=400, detail="Cannot generate NFRA package for unsealed engagements.")
@@ -132,10 +167,11 @@ async def bootstrap_india_workspace(
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
 
     try:
+        await _get_tenant_engagement_or_404(session, eid, _auth)
         engagement = await bootstrap_india_audit_workspace(
             session,
             engagement_id=eid,
-            actor_id=str(_auth.user_id),
+            actor_id=_auth_actor_id(_auth),
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -162,9 +198,7 @@ async def get_india_workspace_endpoint(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
 
-    engagement = await session.get(Engagement, eid)
-    if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
 
     try:
         workspace = get_india_workspace(engagement)
@@ -192,6 +226,7 @@ async def update_india_workspace_item(
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
 
     try:
+        await _get_tenant_engagement_or_404(session, eid, _auth)
         item = await update_workspace_checklist_item(
             session,
             engagement_id=eid,
@@ -199,14 +234,14 @@ async def update_india_workspace_item(
             status=payload.status,
             response=payload.response,
             notes=payload.notes,
-            actor_id=str(_auth.user_id),
+            actor_id=_auth_actor_id(_auth),
         )
     except ValueError as exc:
         detail = str(exc)
         status_code = 404 if "not found" in detail.lower() else 400
         raise HTTPException(status_code=status_code, detail=detail) from exc
 
-    engagement = await session.get(Engagement, eid)
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
     return {
         "engagement_id": engagement_id,
         "item": item,
@@ -225,9 +260,7 @@ async def get_india_workspace_readiness(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid engagement_id UUID")
 
-    engagement = await session.get(Engagement, eid)
-    if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement not found")
+    engagement = await _get_tenant_engagement_or_404(session, eid, _auth)
 
     try:
         readiness = compute_workspace_readiness(engagement)

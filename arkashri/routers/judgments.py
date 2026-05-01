@@ -8,9 +8,19 @@ from pydantic import BaseModel
 
 from arkashri.dependencies import get_session, require_api_client
 from arkashri.dependencies import AuthContext
-from arkashri.models import ProfessionalJudgment, JudgmentStatus, User, ClientRole
+from arkashri.models import ProfessionalJudgment, JudgmentStatus, User, ClientRole, Engagement
 
 router = APIRouter(prefix="/v1/judgments", tags=["Human Judgment"])
+
+
+def _auth_user_uuid(auth: AuthContext) -> uuid.UUID:
+    try:
+        return uuid.UUID(str(auth.client_id))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="Professional judgment sign-off requires an authenticated platform user.",
+        ) from exc
 
 
 @router.get("/{engagement_id}")
@@ -19,9 +29,18 @@ async def list_judgments(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> dict:
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID") from None
+
     judgments = (await session.scalars(
         select(ProfessionalJudgment)
-        .where(ProfessionalJudgment.engagement_id == engagement_id)
+        .join(Engagement, ProfessionalJudgment.engagement_id == Engagement.id)
+        .where(
+            ProfessionalJudgment.engagement_id == eid,
+            Engagement.tenant_id == _auth.tenant_id,
+        )
         .order_by(ProfessionalJudgment.created_at.desc())
     )).all()
     
@@ -53,14 +72,20 @@ async def sign_off_judgment(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> dict:
-    judgment = await session.scalar(select(ProfessionalJudgment).where(ProfessionalJudgment.id == judgment_id))
+    judgment = await session.scalar(
+        select(ProfessionalJudgment)
+        .join(Engagement, ProfessionalJudgment.engagement_id == Engagement.id)
+        .where(ProfessionalJudgment.id == judgment_id, Engagement.tenant_id == _auth.tenant_id)
+    )
     if not judgment:
         raise HTTPException(status_code=404, detail="Judgment not found")
         
     if judgment.status == JudgmentStatus.SIGNED:
         raise HTTPException(status_code=400, detail="Judgment is already signed off")
         
-    user = await session.scalar(select(User).where(User.id == uuid.UUID(_auth.user_id)))
+    user = await session.scalar(
+        select(User).where(User.id == _auth_user_uuid(_auth), User.tenant_id == _auth.tenant_id)
+    )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
         
