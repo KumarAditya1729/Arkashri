@@ -285,11 +285,9 @@ class ThreatDetectionMiddleware(BaseHTTPMiddleware):
         pattern['endpoints'].add(request.url.path)
         pattern['last_activity'] = timestamp
         
-        # Track failed authentication attempts
-        if '/auth' in request.url.path or '/token' in request.url.path:
-            # This would be updated based on actual response status
-            # For now, we'll track all auth endpoint requests
-            pattern['failed_auth'] += 1
+        # Failed authentication attempts are tracked after the response is known.
+        # Counting every /token request before status is available caused valid
+        # logins to poison the per-IP threat counter and eventually return 403.
     
     def _detect_anomalies(self, ip: str, request: Request) -> bool:
         """Detect anomalous behavior"""
@@ -367,9 +365,14 @@ class ThreatDetectionMiddleware(BaseHTTPMiddleware):
         if ip in self.request_patterns:
             pattern = self.request_patterns[ip]
             
-            # Reset failed auth counter on successful auth
-            if '/auth' in request.url.path and response.status_code == 200:
-                pattern['failed_auth'] = max(0, pattern['failed_auth'] - 1)
+            is_auth_path = '/auth' in request.url.path or '/token' in request.url.path
+            if not is_auth_path:
+                return
+
+            if response.status_code in {401, 403}:
+                pattern['failed_auth'] += 1
+            elif response.status_code < 400:
+                pattern['failed_auth'] = 0
 
 
 class RequestSizeMiddleware(BaseHTTPMiddleware):

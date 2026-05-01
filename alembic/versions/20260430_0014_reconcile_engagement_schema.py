@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.sql.compiler import IdentifierPreparer
 
 
 revision = "20260430_0014"
@@ -28,10 +29,17 @@ def _add_enum_values(type_name: str, values: tuple[str, ...]) -> None:
     if bind.dialect.name != "postgresql":
         return
 
+    preparer = IdentifierPreparer(bind.dialect)
+    quoted_type_name = preparer.quote(type_name)
+    literal_processor = sa.String().literal_processor(bind.dialect)
+
     context = op.get_context()
     with context.autocommit_block():
         for value in values:
-            op.execute(sa.text(f"ALTER TYPE {type_name} ADD VALUE IF NOT EXISTS :value").bindparams(value=value))
+            # PostgreSQL does not support bind parameters in ALTER TYPE ADD VALUE.
+            # Quote the enum label with the dialect literal processor instead.
+            enum_label = literal_processor(value) if literal_processor else repr(value)
+            op.execute(sa.text(f"ALTER TYPE {quoted_type_name} ADD VALUE IF NOT EXISTS {enum_label}"))
 
 
 def upgrade() -> None:
