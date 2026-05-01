@@ -39,6 +39,43 @@ async def test_create_engagement_defaults_seven_day_audit_workflow(async_client,
 
 
 @pytest.mark.asyncio
+async def test_create_engagement_uses_authenticated_tenant_for_listing(async_client, monkeypatch) -> None:
+    monkeypatch.setattr("arkashri.dependencies.settings.auth_enforced", False)
+
+    response = await async_client.post(
+        "/api/v1/engagements/engagements",
+        headers={"X-Arkashri-Tenant": "operator_tenant"},
+        json={
+            "tenant_id": "default_tenant",
+            "jurisdiction": "IN",
+            "client_name": "Visible Tenant Audit Private Limited",
+            "engagement_type": "STATUTORY_AUDIT",
+            "auditType": "statutory_audit",
+            "independence_cleared": True,
+            "kyc_cleared": True,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    created = response.json()
+    assert created["tenant_id"] == "operator_tenant"
+
+    visible = await async_client.get(
+        "/api/v1/engagements/engagements",
+        headers={"X-Arkashri-Tenant": "operator_tenant"},
+    )
+    assert visible.status_code == 200, visible.text
+    assert [item["id"] for item in visible.json()] == [created["id"]]
+
+    hidden = await async_client.get(
+        "/api/v1/engagements/engagements",
+        headers={"X-Arkashri-Tenant": "default_tenant"},
+    )
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json() == []
+
+
+@pytest.mark.asyncio
 async def test_update_engagement_workflow_persists_progress(async_client, monkeypatch) -> None:
     monkeypatch.setattr("arkashri.dependencies.settings.auth_enforced", False)
 

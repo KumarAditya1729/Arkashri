@@ -50,9 +50,10 @@ router = APIRouter()
 async def create_new_engagement(
     payload: EngagementCreate,
     session: AsyncSession = Depends(get_session),
-    _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
+    auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> EngagementOut:
     try:
+        payload = payload.model_copy(update={"tenant_id": auth.tenant_id})
         engagement = await create_engagement(session, payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
