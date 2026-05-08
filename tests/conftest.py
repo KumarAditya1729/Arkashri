@@ -1,7 +1,24 @@
 # pyre-ignore-all-errors
+import os
+import tempfile
 import pytest
 import pytest_asyncio
 import asyncio
+
+# Tests must be hermetic even when a developer has a real .env file locally.
+# Environment variables win over pydantic's .env loading, so force safe providers
+# before application modules import Settings or storage services.
+os.environ["APP_ENV"] = "test"
+os.environ["STORAGE_PROVIDER"] = "local"
+os.environ["UPLOAD_DIR"] = os.path.join(tempfile.gettempdir(), "arkashri-test-uploads")
+os.environ["EVIDENCE_S3_BUCKET"] = ""
+os.environ["S3_WORM_BUCKET"] = ""
+os.environ["AWS_ACCESS_KEY_ID"] = ""
+os.environ["AWS_SECRET_ACCESS_KEY"] = ""
+os.environ["AWS_SES_ACCESS_KEY_ID"] = ""
+os.environ["AWS_SES_SECRET_ACCESS_KEY"] = ""
+os.environ["SENTRY_DSN"] = ""
+os.environ["OPENAI_API_KEY"] = ""
 
 @pytest.fixture(scope="session", autouse=True)
 def event_loop():

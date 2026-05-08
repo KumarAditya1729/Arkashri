@@ -41,7 +41,7 @@ from arkashri.services.gc_advanced import (
     advanced_gc_to_dict,
 )
 
-router = APIRouter(prefix="/v1/going-concern", tags=["Going Concern (SA 570)"])
+router = APIRouter(prefix="/going-concern", tags=["Going Concern (SA 570)"])
 
 
 class GoingConcernRequest(BaseModel):

@@ -159,6 +159,13 @@ class RequestValidationMiddleware(BaseHTTPMiddleware):
                 )
                 from fastapi.responses import JSONResponse
                 return JSONResponse(status_code=400, content={"detail": "Invalid request content"})
+            # BaseHTTPMiddleware can otherwise consume the body before FastAPI
+            # parses JSON/form payloads downstream. Replaying it keeps validation
+            # transparent for legitimate create/update requests.
+            async def receive() -> dict:
+                return {"type": "http.request", "body": body, "more_body": False}
+
+            request._receive = receive
         
         return await call_next(request)
     
@@ -330,17 +337,19 @@ class ThreatDetectionMiddleware(BaseHTTPMiddleware):
         # Increment suspicious counter
         self.suspicious_ips[ip] = self.suspicious_ips.get(ip, 0) + 1
         
-        # Block IP after multiple offenses
+        # Do not auto-block application users from in-memory anomaly signals.
+        # Browser apps behind Railway/Vercel proxies can legitimately touch many
+        # routes during startup, and previous auto-blocking caused false 403
+        # "Access denied" responses for normal engagement creation requests.
         if self.suspicious_ips[ip] >= 3:
-            self.blocked_ips.add(ip)
-            self.logger.error(
-                "ip_blocked_due_to_suspicious_activity",
+            self.logger.warning(
+                "suspicious_activity_threshold_reached",
                 ip=ip,
                 offenses=self.suspicious_ips[ip]
             )
             
             security_logger.log_suspicious_activity(
-                "IP blocked due to suspicious activity",
+                "Suspicious activity threshold reached",
                 {
                     "ip": ip,
                     "offenses": self.suspicious_ips[ip],
