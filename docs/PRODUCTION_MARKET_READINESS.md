@@ -72,6 +72,30 @@ export ARKASHRI_SMOKE_ALLOW_WRITE=1
 python3 scripts/first_audit_smoke.py
 ```
 
+## 7-Day Sprint Books Health Gate
+
+The pre-audit cleanup gate is `tests/test_books_health_readiness.py`. It converts messy client books into a CA-controlled cleanup workflow before report drafting:
+
+- bank statement and bank ledger readiness
+- GST reconciliation readiness from GSTR-1/GSTR-2B vs books results
+- ledger hygiene checks for missing imports, duplicate vouchers, weekend entries, large round-number entries, and negative cash/bank indicators
+- evidence readiness checks
+- 0-100 readiness score with `READY`, `AT_RISK`, or `BLOCKED` 7-day sprint status
+- optional client query creation for critical/high blockers, with duplicate open-query suppression
+
+Run the local gate:
+
+```bash
+.venv/bin/python -m pytest tests/test_books_health_readiness.py -q
+```
+
+API surface:
+
+```text
+POST /api/v1/readiness/engagements/{engagement_id}/books-health
+GET  /api/v1/readiness/engagements/{engagement_id}/books-health
+```
+
 ## Remaining Market-Grade Work
 
 - Finish the CA-first UX pass for dashboard, planning, risks, controls, testing, review, reports, and seal flows.
