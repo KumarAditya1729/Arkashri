@@ -49,6 +49,7 @@ async def async_client(db_session):
 @pytest_asyncio.fixture
 async def db_session(tmp_path):
     from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+    import arkashri.models  # noqa: F401 - register all SQLAlchemy models before create_all
     from arkashri.db import Base
     
     db_path = tmp_path / "arkashri-test.db"
