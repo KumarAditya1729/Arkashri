@@ -30,6 +30,7 @@ from arkashri.routers.going_concern import router as going_concern_router
 from arkashri.routers.bank_ingestion import router as bank_ingestion_router
 from arkashri.routers.gst import router as gst_router
 from arkashri.routers.mca import router as mca_router
+from arkashri.routers.readiness import router as readiness_router
 
 router = APIRouter()
 
@@ -59,6 +60,7 @@ router.include_router(erp_ingestion_router, prefix="", tags=["ERP Integration"])
 router.include_router(bank_ingestion_router, prefix="", tags=["Bank Ingestion"])
 router.include_router(gst_router, prefix="", tags=["GST Reconciliation"])
 router.include_router(mca_router, prefix="", tags=["MCA Company Master"])
+router.include_router(readiness_router, prefix="", tags=["Books Health & 7-Day Sprint"])
 router.include_router(controls_router, prefix="", tags=["Controls Registry"])
 router.include_router(planning_router, prefix="", tags=["Audit Planning"])
 router.include_router(going_concern_router, prefix="", tags=["Going Concern (SA 570)"])
