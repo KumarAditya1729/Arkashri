@@ -134,8 +134,13 @@ def _compute_signature_hash(session_id: str, partner_user_id: str, signed_at: da
 
 
 async def _get_session_or_404(session: AsyncSession, session_id: str) -> SealSession:
+    try:
+        sid = uuid.UUID(session_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid SealSession UUID format.") from exc
+
     obj = (await session.scalars(
-        select(SealSession).where(SealSession.id == session_id)
+        select(SealSession).where(SealSession.id == sid)
     )).first()
     if not obj:
         raise HTTPException(status_code=404, detail="SealSession not found.")
@@ -247,7 +252,7 @@ async def create_seal_session(
             body_text=f"A new seal session has been created for engagement {engagement_id}. Please review and sign.",
         )
 
-    return _to_session_out(sess)
+    return await _to_session_out(db, sess)
 
 
 # ─── 2. Get SealSession ───────────────────────────────────────────────────────
@@ -276,7 +281,7 @@ async def get_seal_session(
         raise HTTPException(404, "No active SealSession for this engagement.")
     await _get_session_engagement_or_404(db, sess, auth)
     await db.refresh(sess)
-    return _to_session_out(sess)
+    return await _to_session_out(db, sess)
 
 
 # ─── 3. Pre-Sign Summary (what partner sees before clicking Sign) ─────────────
@@ -319,7 +324,7 @@ async def get_pre_sign_summary(
 
     signatures = (await db.scalars(
         select(SealSignature)
-        .where(SealSignature.seal_session_id == session_id, SealSignature.withdrawn_at.is_(None))
+        .where(SealSignature.seal_session_id == seal_sess.id, SealSignature.withdrawn_at.is_(None))
     )).all()
 
     return PreSignSummary(
@@ -376,7 +381,7 @@ async def sign_seal_session(
     # Prevent duplicate signature from same partner (use authenticated identity)
     dup = (await db.scalars(
         select(SealSignature).where(
-            SealSignature.seal_session_id == session_id,
+            SealSignature.seal_session_id == seal_sess.id,
             SealSignature.partner_user_id == authenticated_user_id,
             SealSignature.withdrawn_at.is_(None),
         )
@@ -407,7 +412,7 @@ async def sign_seal_session(
     sig_hash = _compute_signature_hash(session_id, authenticated_user_id, now)
 
     sig = SealSignature(
-        seal_session_id=session_id,
+        seal_session_id=seal_sess.id,
         partner_user_id=authenticated_user_id,    # H-9: from auth, not caller payload
         partner_email=authenticated_email,         # H-9: from auth, not caller payload
         role=payload.role,
@@ -452,7 +457,7 @@ async def sign_seal_session(
         }
     )
 
-    return _to_session_out(seal_sess)
+    return await _to_session_out(db, seal_sess)
 
 
 # ─── 5. Withdraw Signature ────────────────────────────────────────────────────
@@ -475,10 +480,15 @@ async def withdraw_signature(
     if seal_sess.status == SealSessionStatus.WITHDRAWN:
         raise HTTPException(409, "Seal session is already withdrawn.")
 
+    try:
+        signature_uuid = uuid.UUID(sig_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid signature UUID format.") from exc
+
     sig = (await db.scalars(
         select(SealSignature).where(
-            SealSignature.id == sig_id,
-            SealSignature.seal_session_id == session_id,
+            SealSignature.id == signature_uuid,
+            SealSignature.seal_session_id == seal_sess.id,
         )
     )).first()
     if not sig:
@@ -512,7 +522,7 @@ async def withdraw_signature(
         extra_metadata={"reason": payload.withdrawal_reason, "sig_id": str(sig_id)}
     )
 
-    return _to_session_out(seal_sess)
+    return await _to_session_out(db, seal_sess)
 
 
 # ─── 6. Verify Seal ──────────────────────────────────────────────────────────
@@ -621,8 +631,13 @@ def _to_sig_out(s: SealSignature) -> SealSignatureOut:
     )
 
 
-def _to_session_out(sess: SealSession) -> SealSessionOut:
-    sigs = [_to_sig_out(s) for s in (sess.signatures or []) if not s.withdrawn_at]
+async def _to_session_out(db: AsyncSession, sess: SealSession) -> SealSessionOut:
+    signatures = (await db.scalars(
+        select(SealSignature)
+        .where(SealSignature.seal_session_id == sess.id, SealSignature.withdrawn_at.is_(None))
+        .order_by(SealSignature.signed_at.asc())
+    )).all()
+    sigs = [_to_sig_out(s) for s in signatures]
     return SealSessionOut(
         id=str(sess.id),
         engagement_id=str(sess.engagement_id),

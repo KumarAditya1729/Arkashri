@@ -42,9 +42,37 @@ Status: not ready for unrestricted client data until every hard gate below is pa
 - `/api/proxy/*` streams backend responses, forwards real backend statuses, and rejects cross-origin mutations.
 - AI actions require sourced suggestions plus a CA justification before recording a governance log.
 
+## First-Audit Release Gate
+
+The automated release gate is `tests/test_first_audit_release_gate.py`. It proves a first audit can move through real persisted backend records:
+
+- create engagement using authenticated tenant ownership
+- bootstrap the India statutory audit workspace
+- record planning, materiality, risk, control testing, and evidence
+- record a sourced AI governance log bound to the authenticated tenant
+- persist workflow state through report-ready review
+- generate statutory report and draft opinion
+- create a seal session, load the partner pre-sign summary, sign as CA, seal, and reject post-seal evidence upload
+
+Run the local gate:
+
+```bash
+.venv/bin/python -m pytest tests/test_first_audit_release_gate.py -q
+```
+
+Run the production/staging smoke after creating a seeded CA/operator account:
+
+```bash
+export ARKASHRI_BACKEND_URL="https://arkashri-backend-production.up.railway.app"
+export ARKASHRI_SMOKE_TENANT="default_tenant"
+export ARKASHRI_SMOKE_EMAIL="ca@example.com"
+export ARKASHRI_SMOKE_PASSWORD="..."
+export ARKASHRI_SMOKE_CA_ICAI_REG_NO="FCA-123456"
+export ARKASHRI_SMOKE_ALLOW_WRITE=1
+python3 scripts/first_audit_smoke.py
+```
+
 ## Remaining Market-Grade Work
 
-- Run a real authenticated production smoke test using a seeded CA/operator account.
 - Finish the CA-first UX pass for dashboard, planning, risks, controls, testing, review, reports, and seal flows.
-- Add automated end-to-end tests for the full engagement lifecycle on real backend records.
 - Complete a formal security review for tenant isolation, evidence file access, logs, backups, and immutability.

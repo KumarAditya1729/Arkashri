@@ -74,7 +74,10 @@ async def usas_log_ai_governance(
     session: AsyncSession = Depends(get_session),
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> AIGovernanceLogOut:
-    return AIGovernanceLogOut.model_validate(await record_ai_governance_log(session, payload))
+    # Tenant ownership must come from the authenticated session, not from the
+    # browser payload. This keeps AI override logs tenant-bound and auditable.
+    scoped_payload = payload.model_copy(update={"tenant_id": _auth.tenant_id})
+    return AIGovernanceLogOut.model_validate(await record_ai_governance_log(session, scoped_payload))
 
 
 @router.post("/sovereign-archives", response_model=SovereignArchiveOut, status_code=status.HTTP_201_CREATED)

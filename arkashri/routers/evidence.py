@@ -34,8 +34,8 @@ logger = structlog.get_logger(__name__)
 
 class EvidenceOut(BaseModel):
     model_config = {"from_attributes": True}
-    id:            str
-    engagement_id: str
+    id:            uuid.UUID
+    engagement_id: uuid.UUID
     evd_ref:       str
     file_name:     str
     file_path:     str

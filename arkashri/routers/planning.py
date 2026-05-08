@@ -35,8 +35,8 @@ class PhaseCreate(BaseModel):
 
 class PhaseOut(BaseModel):
     model_config = {"from_attributes": True}
-    id: str
-    engagement_id: str
+    id: uuid.UUID
+    engagement_id: uuid.UUID
     name: str
     status: PhaseStatus
     start_date: datetime | None
@@ -52,8 +52,8 @@ class TeamMemberCreate(BaseModel):
 
 class TeamMemberOut(BaseModel):
     model_config = {"from_attributes": True}
-    id: str
-    engagement_id: str
+    id: uuid.UUID
+    engagement_id: uuid.UUID
     name: str
     role: str
     initials: str | None
