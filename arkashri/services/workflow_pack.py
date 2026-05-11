@@ -36,6 +36,8 @@ PACK_DIR: Path = _resolved
 log.info("workflow_pack resolved: %s", PACK_DIR)
 
 INDEX_PATH = PACK_DIR / "index.json"
+CATALOG_PATH = PACK_DIR / "service_catalog.json"
+LIFECYCLE_PATH = PACK_DIR / "master_lifecycle.json"
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -65,6 +67,39 @@ def get_workflow_pack_summary() -> dict[str, Any]:
         "version": index["version"],
         "schema": index["schema"],
         "templates": index["templates"],
+    }
+
+
+@lru_cache
+def load_service_catalog() -> dict[str, Any]:
+    if not CATALOG_PATH.exists():
+        raise FileNotFoundError(f"Audit service catalog not found at {CATALOG_PATH}")
+    return _load_json(CATALOG_PATH)
+
+
+def get_service_catalog_summary() -> dict[str, Any]:
+    catalog = load_service_catalog()
+    service_count = sum(len(division.get("services", [])) for division in catalog.get("divisions", []))
+    return {
+        **catalog,
+        "division_count": len(catalog.get("divisions", [])),
+        "service_count": service_count,
+    }
+
+
+@lru_cache
+def load_master_lifecycle() -> dict[str, Any]:
+    if not LIFECYCLE_PATH.exists():
+        raise FileNotFoundError(f"Master audit lifecycle not found at {LIFECYCLE_PATH}")
+    return _load_json(LIFECYCLE_PATH)
+
+
+def get_master_lifecycle_summary() -> dict[str, Any]:
+    lifecycle = load_master_lifecycle()
+    return {
+        **lifecycle,
+        "phase_count": len(lifecycle.get("phases", [])),
+        "specialized_overlay_count": len(lifecycle.get("specialized_overlays", [])),
     }
 
 

@@ -25,10 +25,6 @@ from decimal import Decimal
 
 from arkashri.services.canonical import hash_object, canonical_json_bytes
 
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.exceptions import InvalidSignature
-
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -79,23 +75,16 @@ def compute_seal_hash(payload: dict) -> str:
 
 
 def compute_seal_signature(tenant_id: str, payload: dict, key_version: str = CURRENT_KEY_VERSION) -> str:
-    """Public: compute ECDSA signature. Used by verifier."""
-    priv = kms_service.get_tenant_signing_key(tenant_id)
-    sig = priv.sign(
-        canonical_json_bytes(payload),
-        ec.ECDSA(hashes.SHA256())
-    )
+    """Public: compute an ECDSA signature through the configured KMS provider."""
+    sig = kms_service.sign_tenant_payload(tenant_id, payload)
     return _b64.b64encode(sig).decode('utf-8')
 
 def verify_seal_signature(tenant_id: str, payload: dict, signature_b64: str) -> bool:
     """Public: verify ECDSA signature. Used by verifier."""
     try:
-        pub_pem = kms_service.get_tenant_public_key_pem(tenant_id)
-        pub = serialization.load_pem_public_key(pub_pem.encode('utf-8'))
         sig = _b64.b64decode(signature_b64)
-        pub.verify(sig, canonical_json_bytes(payload), ec.ECDSA(hashes.SHA256()))
-        return True
-    except (InvalidSignature, ValueError, TypeError) as e:
+        return kms_service.verify_tenant_payload(tenant_id, payload, sig)
+    except (ValueError, TypeError) as e:
         logger.warning(f"Signature verification failed for tenant {tenant_id}: {e}")
         return False
 
@@ -266,7 +255,7 @@ async def _build_seal_payload(
                     }
                     for ov in overrides
                 ],
-                key=lambda x: x["timestamp"],
+                key=lambda x: str(x["timestamp"]),
             ),
         },
         "cryptographic_anchors": {
@@ -292,7 +281,7 @@ async def _build_seal_payload(
                     }
                     for e in exceptions
                 ],
-                key=lambda x: x["id"],
+                key=lambda x: str(x["id"]),
             ),
         },
     }

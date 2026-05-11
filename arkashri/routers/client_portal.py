@@ -180,6 +180,8 @@ async def get_portal_timeline(
     """
     access = await verify_portal_token(token, session)
     engagement = await session.scalar(select(Engagement).where(Engagement.id == access.engagement_id))
+    if not engagement:
+        raise HTTPException(status_code=404, detail="Engagement associated with this token is missing")
 
     timeline = []
     
@@ -312,7 +314,7 @@ async def subscribe_to_milestones(
 
 @router.post("/engagements/{engagement_id}/queries")
 async def create_portal_query(
-    engagement_id: str,
+    engagement_id: uuid.UUID,
     payload: ClientQueryCreateRequest,
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),
@@ -357,7 +359,7 @@ async def create_portal_query(
 
 @router.get("/engagements/{engagement_id}/workflow")
 async def get_internal_portal_workflow(
-    engagement_id: str,
+    engagement_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER, ClientRole.READ_ONLY})),
 ) -> dict:
@@ -374,7 +376,7 @@ async def get_internal_portal_workflow(
 
 @router.patch("/engagements/{engagement_id}/queries/{query_id}")
 async def update_portal_query(
-    engagement_id: str,
+    engagement_id: uuid.UUID,
     query_id: str,
     payload: ClientQueryUpdateRequest,
     session: AsyncSession = Depends(get_session),
@@ -399,7 +401,7 @@ async def update_portal_query(
 
 @router.post("/engagements/{engagement_id}/approvals")
 async def create_portal_approval(
-    engagement_id: str,
+    engagement_id: uuid.UUID,
     payload: ClientApprovalCreateRequest,
     session: AsyncSession = Depends(get_session),
     auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR, ClientRole.REVIEWER})),

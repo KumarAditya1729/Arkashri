@@ -3,6 +3,7 @@ import asyncio
 import datetime
 import structlog
 from typing import Any
+from urllib.parse import urlparse
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,6 @@ from arkashri.config import get_settings
 from arkashri.services.blockchain_adapter import ADAPTERS
 
 logger = structlog.get_logger("services.health")
-settings = get_settings()
 
 async def check_database(db: AsyncSession) -> bool:
     try:
@@ -23,16 +23,26 @@ async def check_database(db: AsyncSession) -> bool:
         return False
 
 async def check_redis() -> bool:
+    settings = get_settings()
+    redis_url = (settings.redis_url or "").strip()
+    parsed = urlparse(redis_url)
+    if not redis_url or parsed.scheme not in {"redis", "rediss"}:
+        logger.warning("health_check_redis_not_configured")
+        return False
     try:
-        r = redis_async.from_url(settings.redis_url)
-        await r.ping()
-        return True
+        r = redis_async.from_url(redis_url)
+        try:
+            await r.ping()
+            return True
+        finally:
+            await r.close()
     except Exception as e:
         logger.error("health_check_redis_failed", error=str(e))
         return False
 
 async def check_openai() -> bool:
     """Checks if the configured OpenAI-compatible provider can serve the selected model."""
+    settings = get_settings()
     if not settings.openai_api_key:
         return False
     try:
@@ -51,9 +61,25 @@ async def check_openai() -> bool:
         logger.error("health_check_openai_failed", error=str(e))
         return False
 
+def _openai_status_from_config() -> str:
+    settings = get_settings()
+    return "unconfigured" if not settings.openai_api_key else "unreachable"
+
+def _configured_blockchain_adapters() -> set[str]:
+    settings = get_settings()
+    configured: set[str] = set()
+    if settings.polkadot_enabled:
+        configured.add("POLKADOT")
+    if settings.hash_notary_url:
+        configured.add("HASH_NOTARY")
+    return configured
+
 async def check_blockchain() -> dict[str, bool]:
     results = {}
+    configured = _configured_blockchain_adapters()
     for key, adapter in ADAPTERS.items():
+        if key not in configured:
+            continue
         results[key] = await adapter.check_health()
     return results
 
@@ -70,9 +96,11 @@ async def get_full_health_status(db: AsyncSession) -> dict[str, Any]:
         redis_task, openai_task, blockchain_task
     )
     
+    openai_status = "ok" if openai_ok else _openai_status_from_config()
+
     if not (db_ok and redis_ok):
         status = "unhealthy"
-    elif not (openai_ok and all(blockchain_results.values())):
+    elif openai_status == "unreachable" or not all(blockchain_results.values()):
         status = "degraded"
     else:
         status = "healthy"
@@ -83,7 +111,7 @@ async def get_full_health_status(db: AsyncSession) -> dict[str, Any]:
         "dependencies": {
             "database": "ok" if db_ok else "unreachable",
             "redis": "ok" if redis_ok else "unreachable",
-            "openai": "ok" if openai_ok else "unreachable",
+            "openai": openai_status,
             "blockchain": blockchain_results,
         }
     }

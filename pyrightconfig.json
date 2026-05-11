@@ -5,5 +5,17 @@
     "/Users/adityashrivastava/Desktop/company_1",
     "/Users/adityashrivastava/Desktop/company_1/arkashri-ai-engineer"
   ],
+  "exclude": [
+    "**/node_modules",
+    "**/.venv",
+    "**/.venv-test",
+    "**/build",
+    "**/alembic",
+    "**/scripts",
+    "**/tests",
+    "**/test_*.py",
+    "**/verify_*.py",
+    "**/arkashri-ai-engineer"
+  ],
   "reportMissingImports": "none"
 }

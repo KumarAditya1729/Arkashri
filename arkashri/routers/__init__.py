@@ -31,6 +31,9 @@ from arkashri.routers.bank_ingestion import router as bank_ingestion_router
 from arkashri.routers.gst import router as gst_router
 from arkashri.routers.mca import router as mca_router
 from arkashri.routers.readiness import router as readiness_router
+from arkashri.routers.data_refinery import router as data_refinery_router
+from arkashri.routers.audit_automation import router as audit_automation_router
+from arkashri.routers.specialist_audit import router as specialist_audit_router
 
 router = APIRouter()
 
@@ -61,6 +64,9 @@ router.include_router(bank_ingestion_router, prefix="", tags=["Bank Ingestion"])
 router.include_router(gst_router, prefix="", tags=["GST Reconciliation"])
 router.include_router(mca_router, prefix="", tags=["MCA Company Master"])
 router.include_router(readiness_router, prefix="", tags=["Books Health & 7-Day Sprint"])
+router.include_router(data_refinery_router, prefix="", tags=["Audit Data Refinery"])
+router.include_router(audit_automation_router, prefix="", tags=["Big 4 Automation Engine"])
+router.include_router(specialist_audit_router, prefix="", tags=["Specialist Audit Execution Engine"])
 router.include_router(controls_router, prefix="", tags=["Controls Registry"])
 router.include_router(planning_router, prefix="", tags=["Audit Planning"])
 router.include_router(going_concern_router, prefix="", tags=["Going Concern (SA 570)"])

@@ -460,8 +460,14 @@ class TestPhase4ProductionLockMode:
             "enable_mock_data": False,
             "session_secret_key": "a" * 64,
             "kms_provider": "aws",
+            "kms_asymmetric_key_id": "alias/arkashri-prod-seal",
             "bootstrap_admin_token": "SuperSecureToken_REPLACE_1234567890ab",
             "database_url": "postgresql+asyncpg://u:p@localhost/db",
+            "redis_url": "rediss://cache.example.com:6379/0",
+            "storage_provider": "s3",
+            "evidence_s3_bucket": "arkashri-prod-evidence",
+            "s3_worm_bucket": "arkashri-prod-worm",
+            "cors_origins": ["https://app.arkashri.com"],
         }
         base.update(overrides)
         return Settings(**base)
@@ -484,6 +490,12 @@ class TestPhase4ProductionLockMode:
         with pytest.raises(RuntimeError, match="KMS_PROVIDER"):
             s.validate_runtime_configuration()
 
+    def test_prod_lock_aws_kms_key_id_required(self):
+        """Production AWS KMS must name the asymmetric signing key used for audit seals."""
+        s = self._make_prod_settings(kms_asymmetric_key_id=None)
+        with pytest.raises(RuntimeError, match="KMS_ASYMMETRIC_KEY_ID"):
+            s.validate_runtime_configuration()
+
     def test_prod_lock_weak_bootstrap_token_rejected(self):
         """Production must refuse the default 'arkashri-bootstrap' bootstrap token."""
         s = self._make_prod_settings(bootstrap_admin_token="arkashri-bootstrap")
@@ -494,6 +506,30 @@ class TestPhase4ProductionLockMode:
         """Production must refuse any bootstrap token shorter than 24 characters."""
         s = self._make_prod_settings(bootstrap_admin_token="short-token")
         with pytest.raises(RuntimeError, match="BOOTSTRAP_ADMIN_TOKEN"):
+            s.validate_runtime_configuration()
+
+    def test_prod_lock_local_redis_rejected(self):
+        """Production must refuse local Redis because workers and rate limits depend on shared state."""
+        s = self._make_prod_settings(redis_url="redis://localhost:6379/0")
+        with pytest.raises(RuntimeError, match="REDIS_URL"):
+            s.validate_runtime_configuration()
+
+    def test_prod_lock_local_storage_rejected(self):
+        """Production must refuse local evidence storage."""
+        s = self._make_prod_settings(storage_provider="local")
+        with pytest.raises(RuntimeError, match="STORAGE_PROVIDER"):
+            s.validate_runtime_configuration()
+
+    def test_prod_lock_worm_bucket_required(self):
+        """Production must require immutable archive storage."""
+        s = self._make_prod_settings(s3_worm_bucket=None)
+        with pytest.raises(RuntimeError, match="S3_WORM_BUCKET"):
+            s.validate_runtime_configuration()
+
+    def test_prod_lock_local_cors_rejected(self):
+        """Production must not allow browser CORS from localhost."""
+        s = self._make_prod_settings(cors_origins=["https://app.arkashri.com", "http://localhost:3000"])
+        with pytest.raises(RuntimeError, match="CORS_ORIGINS"):
             s.validate_runtime_configuration()
 
     def test_prod_lock_valid_config_passes(self):

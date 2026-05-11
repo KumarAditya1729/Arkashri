@@ -32,7 +32,7 @@ async def blockchain_anchor(
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN, ClientRole.OPERATOR})),
 ) -> ChainAnchorOut:
     try:
-        attestation_result = run_adapter_anchor(
+        attestation_result = await run_adapter_anchor(
             payload.adapter_key,
             tenant_id=tenant_id,
             jurisdiction=jurisdiction,

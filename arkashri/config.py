@@ -1,5 +1,7 @@
 # pyre-ignore-all-errors
 from functools import lru_cache
+import json
+from urllib.parse import urlparse
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -63,6 +65,7 @@ class Settings(BaseSettings):
     # If unset, the system will fail to seal records.
     seal_key_v1: str | None = None
     kms_provider: str = "env"  # Options: env, aws, gcp
+    kms_asymmetric_key_id: str | None = None
 
     # ── S3 WORM Archive ───────────────────────────────────────────────────────
     s3_worm_bucket: str | None = None         # e.g. "arkashri-audit-worm"
@@ -110,6 +113,11 @@ class Settings(BaseSettings):
     allowed_file_types: str = "application/pdf,image/jpeg,image/png,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     erp_request_timeout_seconds: int = 30
     bank_csv_max_rows: int = 10000
+    ocr_provider: str | None = None
+    aws_textract_region: str | None = None
+    google_document_ai_processor: str | None = None
+    azure_document_intelligence_endpoint: str | None = None
+    azure_document_intelligence_key: str | None = None
     mca_master_data_url: str | None = None
     mca_api_key: str | None = None
     mca_request_timeout_seconds: int = 20
@@ -169,7 +177,8 @@ class Settings(BaseSettings):
             if not stripped:
                 return []
             if stripped.startswith("["):
-                return value
+                parsed = json.loads(stripped)
+                return parsed if isinstance(parsed, list) else []
             return [origin.strip() for origin in stripped.split(",") if origin.strip()]
         return value
     
@@ -237,6 +246,18 @@ class Settings(BaseSettings):
                     "verification becomes impossible. Configure an external KMS and set "
                     "KMS_PROVIDER=aws (or gcp/vault) in your environment."
                 )
+            if kms == "aws" and not self.kms_asymmetric_key_id:
+                raise RuntimeError(
+                    "FATAL [Production Lock]: KMS_ASYMMETRIC_KEY_ID is required when "
+                    "KMS_PROVIDER=aws. Configure an AWS KMS ECC_NIST_P256 signing key for "
+                    "audit seal signatures."
+                )
+            if kms in {"gcp", "vault"}:
+                raise RuntimeError(
+                    "FATAL [Production Lock]: KMS_PROVIDER=gcp/vault is reserved but not "
+                    "implemented in this build. Use KMS_PROVIDER=aws with KMS_ASYMMETRIC_KEY_ID, "
+                    "or add the provider implementation before production."
+                )
 
             # Gate 5: Trivially-guessable bootstrap token must be replaced (H-3).
             _weak = {"arkashri-bootstrap", "bootstrap", "admin", "secret",
@@ -268,12 +289,50 @@ class Settings(BaseSettings):
                 )
 
             # Gate 8: REDIS_URL must be configured for the ARQ Workers to function natively
-            if not self.redis_url or "localhost" in self.redis_url.lower():
-                import warnings
-                warnings.warn(
-                    "WARNING [Production Lock]: REDIS_URL appears to be localhost or empty. "
-                    "The anchor verification and async background processes require a valid Redis instance "
-                    "unless strictly testing workers on the same container."
+            redis = (self.redis_url or "").strip()
+            parsed_redis = urlparse(redis)
+            redis_host = (parsed_redis.hostname or "").lower()
+            if (
+                not redis
+                or parsed_redis.scheme not in {"redis", "rediss"}
+                or redis_host in {"localhost", "127.0.0.1", "::1"}
+            ):
+                raise RuntimeError(
+                    "FATAL [Production Lock]: REDIS_URL must point to a managed Redis instance "
+                    "using redis:// or rediss://. Localhost or empty Redis disables rate limiting, "
+                    "background workers, idempotency, and cache coordination."
+                )
+
+            # Gate 9: Production evidence storage must be remote and durable.
+            storage = (self.storage_provider or "").strip().lower()
+            if storage == "local":
+                raise RuntimeError(
+                    "FATAL [Production Lock]: STORAGE_PROVIDER=local is not allowed in production. "
+                    "Use durable object storage such as S3 for client evidence and generated reports."
+                )
+            if storage == "s3" and not self.evidence_s3_bucket:
+                raise RuntimeError(
+                    "FATAL [Production Lock]: EVIDENCE_S3_BUCKET is required when STORAGE_PROVIDER=s3."
+                )
+            if not self.s3_worm_bucket:
+                raise RuntimeError(
+                    "FATAL [Production Lock]: S3_WORM_BUCKET is required for immutable audit archive storage."
+                )
+
+            # Gate 10: Production CORS must be explicit and must not include dev origins.
+            cors_values = self.cors_origins or []
+            if any(origin == "*" for origin in cors_values):
+                raise RuntimeError(
+                    "FATAL [Production Lock]: CORS_ORIGINS cannot include '*' in production."
+                )
+            local_origins = [
+                origin for origin in cors_values
+                if "localhost" in origin.lower() or "127.0.0.1" in origin or "[::1]" in origin
+            ]
+            if local_origins:
+                raise RuntimeError(
+                    "FATAL [Production Lock]: CORS_ORIGINS contains local development origins. "
+                    f"Remove before production: {', '.join(local_origins)}"
                 )
 
 

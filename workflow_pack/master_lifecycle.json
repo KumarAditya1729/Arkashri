@@ -1,0 +1,302 @@
+{
+  "lifecycle_id": "arkashri_master_audit_lifecycle",
+  "version": "1.0.0",
+  "positioning": "Professional audit lifecycle used as the common operating backbone for financial, internal, compliance, forensic, IT/cyber, ESG, and specialized audits.",
+  "phases": [
+    {
+      "phase_id": "engagement_acceptance",
+      "order": 1,
+      "name": "Engagement & Audit Acceptance",
+      "purpose": "Decide whether to take the audit assignment and define the professional relationship.",
+      "activities": [
+        "Client onboarding",
+        "Independence check",
+        "Conflict of interest review",
+        "Risk profiling",
+        "Engagement letter signing",
+        "NDA and confidentiality agreements",
+        "Scope definition",
+        "Timeline finalization"
+      ],
+      "outputs": ["Engagement Letter", "Audit Scope Document", "Audit Plan Approval"]
+    },
+    {
+      "phase_id": "business_understanding",
+      "order": 2,
+      "name": "Understanding the Business",
+      "purpose": "Understand the company, its environment, systems, processes, and control context.",
+      "activities": [
+        "Industry analysis",
+        "Organization structure review",
+        "Process walkthroughs",
+        "ERP and accounting system understanding",
+        "Internal control understanding",
+        "Prior audit review",
+        "Key risk identification",
+        "Materiality assessment"
+      ],
+      "outputs": ["Risk Matrix", "Business Understanding Notes", "Control Environment Summary"]
+    },
+    {
+      "phase_id": "audit_planning",
+      "order": 3,
+      "name": "Audit Planning",
+      "purpose": "Create the audit strategy, program, resource plan, and evidence request structure.",
+      "activities": [
+        "Define audit objectives",
+        "Resource allocation",
+        "Audit program creation",
+        "Sampling methodology",
+        "Compliance checklist preparation",
+        "PBC request list preparation",
+        "Timeline and milestone planning"
+      ],
+      "outputs": ["Audit Program", "Testing Plan", "Sampling Framework", "PBC Request List"]
+    },
+    {
+      "phase_id": "data_collection",
+      "order": 4,
+      "name": "Data Collection",
+      "purpose": "Gather source documents, system extracts, logs, filings, and audit evidence.",
+      "activities": [
+        "Financial statement collection",
+        "Ledger extraction",
+        "Invoice collection",
+        "Contract review",
+        "Bank statement collection",
+        "Payroll record collection",
+        "Tax filing collection",
+        "System log collection",
+        "Access log collection",
+        "SOP collection"
+      ],
+      "outputs": ["Audit Evidence Repository", "Data Inventory", "Document Index"]
+    },
+    {
+      "phase_id": "risk_assessment",
+      "order": 5,
+      "name": "Risk Assessment",
+      "purpose": "Identify high-risk areas using professional judgment, controls context, analytics, and exception detection.",
+      "activities": [
+        "Fraud risk analysis",
+        "Control risk analysis",
+        "Inherent risk analysis",
+        "Analytical procedures",
+        "Ratio analysis",
+        "Trend analysis",
+        "Exception detection"
+      ],
+      "outputs": ["Risk Scoring", "High-Risk Areas List", "Risk Heatmap"]
+    },
+    {
+      "phase_id": "control_testing",
+      "order": 6,
+      "name": "Internal Control Testing",
+      "purpose": "Evaluate control design and operating effectiveness.",
+      "activities": [
+        "Walkthrough testing",
+        "Approval hierarchy testing",
+        "Segregation of duties review",
+        "Access control testing",
+        "Authorization testing",
+        "ITGC testing",
+        "Maker-checker validation"
+      ],
+      "outputs": ["Control Testing Results", "Control Deficiency Report"]
+    },
+    {
+      "phase_id": "substantive_testing",
+      "order": 7,
+      "name": "Substantive Testing",
+      "purpose": "Verify transactions, balances, existence, completeness, valuation, rights, obligations, and cut-off.",
+      "activities": [
+        "Voucher verification",
+        "Invoice matching",
+        "Bank confirmations",
+        "Debtor confirmations",
+        "Creditor confirmations",
+        "Inventory verification",
+        "Recalculation",
+        "Cut-off testing",
+        "Sampling checks",
+        "Physical verification"
+      ],
+      "outputs": ["Working Papers", "Exception Logs", "Evidence Files"]
+    },
+    {
+      "phase_id": "specialized_procedures",
+      "order": 8,
+      "name": "Specialized Audit Procedures",
+      "purpose": "Run audit-type-specific procedures for the selected service line.",
+      "activities": ["Apply specialized procedure overlay by audit type"],
+      "outputs": ["Specialized Working Papers", "Specialist Findings", "Audit-Type Report Inputs"]
+    },
+    {
+      "phase_id": "findings_classification",
+      "order": 9,
+      "name": "Audit Findings & Issue Classification",
+      "purpose": "Document exceptions, root causes, severity, and recommendations.",
+      "activities": [
+        "Exception classification",
+        "Root cause identification",
+        "Risk severity grading",
+        "Recommendation drafting",
+        "Management discussion"
+      ],
+      "severity_levels": ["Critical", "High", "Medium", "Low"],
+      "outputs": ["Audit Findings Register", "Observation Sheets"]
+    },
+    {
+      "phase_id": "management_response",
+      "order": 10,
+      "name": "Management Response",
+      "purpose": "Obtain management explanations, action plans, and remediation commitments.",
+      "activities": [
+        "Discussion meetings",
+        "Corrective action planning",
+        "Response validation",
+        "Dispute resolution"
+      ],
+      "outputs": ["Management Action Plan", "Agreed Remediation Timeline"]
+    },
+    {
+      "phase_id": "audit_reporting",
+      "order": 11,
+      "name": "Audit Reporting",
+      "purpose": "Issue the formal report, assurance conclusion, or audit opinion.",
+      "activities": [
+        "Draft report creation",
+        "Partner review",
+        "Legal review",
+        "Finalization",
+        "Report issuance"
+      ],
+      "opinion_types": ["Unqualified Opinion", "Qualified Opinion", "Adverse Opinion", "Disclaimer Opinion"],
+      "outputs": ["Final Audit Report", "Assurance Opinion"]
+    },
+    {
+      "phase_id": "follow_up_monitoring",
+      "order": 12,
+      "name": "Follow-Up & Monitoring",
+      "purpose": "Track remediation, retest fixes, validate closure, and support continuous monitoring.",
+      "activities": [
+        "Remediation tracking",
+        "Re-testing",
+        "Continuous monitoring",
+        "Closure validation"
+      ],
+      "outputs": ["Closure Report", "Continuous Audit Dashboard"]
+    }
+  ],
+  "specialized_overlays": [
+    {
+      "audit_family": "financial_audit",
+      "name": "Financial Audit Process",
+      "additional_steps": [
+        "Trial balance review",
+        "Revenue recognition testing",
+        "Expense testing",
+        "Journal entry testing",
+        "Balance sheet verification",
+        "Cash flow review",
+        "Disclosure compliance review"
+      ],
+      "final_outputs": ["True & Fair Opinion"]
+    },
+    {
+      "audit_family": "internal_audit",
+      "name": "Internal Audit Process",
+      "additional_steps": [
+        "SOP compliance testing",
+        "Process efficiency review",
+        "Root cause analysis",
+        "Operational improvement analysis"
+      ],
+      "final_outputs": ["Internal Control Recommendations"]
+    },
+    {
+      "audit_family": "tax_audit",
+      "name": "Tax Audit Process",
+      "additional_steps": [
+        "GST reconciliation",
+        "Tax computation review",
+        "TDS verification",
+        "Input credit validation",
+        "Transfer pricing review"
+      ],
+      "final_outputs": ["Tax Compliance Report"]
+    },
+    {
+      "audit_family": "forensic_audit",
+      "name": "Forensic Audit Process",
+      "additional_steps": [
+        "Email analysis",
+        "Device imaging",
+        "Fraud tracing",
+        "Suspicious transaction mapping",
+        "WhatsApp/chat evidence review",
+        "Digital forensic analysis",
+        "Money trail reconstruction"
+      ],
+      "final_outputs": ["Investigation Report", "Litigation Evidence Package"]
+    },
+    {
+      "audit_family": "it_cyber_audit",
+      "name": "IT / Cyber Audit Process",
+      "additional_steps": [
+        "Vulnerability scanning",
+        "Access rights review",
+        "Security configuration testing",
+        "Penetration testing",
+        "API security testing",
+        "Cloud infrastructure review",
+        "Log monitoring analysis"
+      ],
+      "final_outputs": ["Cyber Risk Report", "Security Gap Assessment"]
+    },
+    {
+      "audit_family": "compliance_audit",
+      "name": "Compliance Audit Process",
+      "additional_steps": [
+        "Regulatory checklist review",
+        "License validation",
+        "Legal compliance testing",
+        "Policy adherence testing"
+      ],
+      "final_outputs": ["Compliance Status Report"]
+    },
+    {
+      "audit_family": "esg_audit",
+      "name": "ESG / Sustainability Audit",
+      "additional_steps": [
+        "Carbon emission review",
+        "Sustainability metric verification",
+        "Waste management analysis",
+        "ESG disclosure validation"
+      ],
+      "final_outputs": ["ESG Assurance Report"]
+    }
+  ],
+  "modern_ai_driven_workflow": [
+    "AI anomaly detection",
+    "Continuous auditing",
+    "Real-time ERP integration",
+    "Automated control testing",
+    "NLP document analysis",
+    "Predictive risk scoring",
+    "Process mining",
+    "Blockchain verification",
+    "Digital twins for controls"
+  ],
+  "future_state": {
+    "traditional_audit": ["Manual sampling", "Excel-heavy workflows", "PDF-based evidence", "Periodic reviews"],
+    "next_generation_audit": [
+      "Continuous real-time audit",
+      "Autonomous AI agents",
+      "Cryptographic evidence sealing",
+      "Full transaction monitoring",
+      "AI risk prediction",
+      "Zero-trust verification"
+    ]
+  }
+}
