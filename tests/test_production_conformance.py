@@ -96,7 +96,13 @@ class TestAuthEnforced:
             session_secret_key="a" * 64,
             enable_mock_data=False,
             kms_provider="aws",
+            kms_asymmetric_key_id="alias/arkashri-prod-seal",
             bootstrap_admin_token="b" * 32,
+            redis_url="rediss://cache.example.com:6379/0",
+            storage_provider="s3",
+            evidence_s3_bucket="arkashri-prod-evidence",
+            s3_worm_bucket="arkashri-prod-worm",
+            cors_origins=["https://app.arkashri.com"],
         )
         # Must not raise
         s.validate_runtime_configuration()
@@ -144,7 +150,13 @@ class TestSessionSecretKey:
             session_secret_key="a" * 64,
             enable_mock_data=False,
             kms_provider="aws",
+            kms_asymmetric_key_id="alias/arkashri-prod-seal",
             bootstrap_admin_token="b" * 32,
+            redis_url="rediss://cache.example.com:6379/0",
+            storage_provider="s3",
+            evidence_s3_bucket="arkashri-prod-evidence",
+            s3_worm_bucket="arkashri-prod-worm",
+            cors_origins=["https://app.arkashri.com"],
         )
         # Must not raise
         s.validate_runtime_configuration()

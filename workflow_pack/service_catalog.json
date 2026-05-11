@@ -1,0 +1,152 @@
+{
+  "catalog_id": "arkashri_big4_audit_service_catalog",
+  "version": "1.0.0",
+  "positioning": "Big-4-style audit service coverage mapped to Arkashri reusable workflow templates. Specialized services can start from a shared workflow and later graduate into dedicated templates.",
+  "readiness_levels": {
+    "workflow_ready": "Dedicated Arkashri workflow template exists.",
+    "mapped_ready": "Service is covered by a reusable workflow template with service-specific scope fields and checklists to be configured per engagement.",
+    "specialist_engine_ready": "Specialist execution engine is available with scoped workprograms, evidence checklists, risk registers, safe-mode procedures, and human-review gates."
+  },
+  "divisions": [
+    {
+      "division_id": "financial_audits",
+      "name": "Financial Audits",
+      "description": "Core accounting, assurance, statutory reporting, lender, fund, trust, and transaction assurance services.",
+      "services": [
+        {"id": "statutory_audit", "name": "Statutory Audit", "workflow_template": "statutory_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "external_audit", "name": "External Audit", "workflow_template": "external_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "financial_statement_audit", "name": "Financial Statement Audit", "workflow_template": "financial_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "ifc_audit", "name": "Internal Financial Control (IFC) Audit", "workflow_template": "financial_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "group_audit", "name": "Group Audit", "workflow_template": "external_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "consolidation_audit", "name": "Consolidation Audit", "workflow_template": "financial_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "bank_audit", "name": "Bank Audit", "workflow_template": "financial_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "branch_audit", "name": "Branch Audit", "workflow_template": "financial_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "stock_audit", "name": "Stock Audit", "workflow_template": "inventory_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "concurrent_audit", "name": "Concurrent Audit", "workflow_template": "internal_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "revenue_audit", "name": "Revenue Audit", "workflow_template": "financial_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "limited_review", "name": "Limited Review", "workflow_template": "external_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "ipo_audit", "name": "IPO Audit / IPO Readiness Assurance", "workflow_template": "external_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "due_diligence_audit", "name": "Due Diligence Audit", "workflow_template": "financial_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "fund_audit", "name": "Fund Audit", "workflow_template": "financial_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "trust_audit", "name": "Trust Audit", "workflow_template": "statutory_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "ngo_audit", "name": "NGO Audit", "workflow_template": "social_audit", "readiness": "workflow_ready", "priority": "growth"}
+      ]
+    },
+    {
+      "division_id": "internal_audit_risk_advisory",
+      "name": "Internal Audit & Risk Advisory",
+      "description": "Process, controls, governance, operational, procurement, inventory, vendor, and enterprise risk assurance services.",
+      "services": [
+        {"id": "internal_audit", "name": "Internal Audit", "workflow_template": "internal_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "process_audit", "name": "Process Audit", "workflow_template": "operational_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "operational_audit", "name": "Operational Audit", "workflow_template": "operational_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "risk_audit", "name": "Risk Audit", "workflow_template": "internal_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "erm_review", "name": "Enterprise Risk Management (ERM)", "workflow_template": "internal_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "governance_audit", "name": "Governance Audit", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "sop_review", "name": "SOP Review", "workflow_template": "quality_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "fraud_risk_assessment", "name": "Fraud Risk Assessment", "workflow_template": "forensic_risk_profile", "readiness": "workflow_ready", "priority": "growth"},
+        {"id": "business_process_review", "name": "Business Process Review", "workflow_template": "operational_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "procurement_audit", "name": "Procurement Audit", "workflow_template": "operational_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "inventory_audit", "name": "Inventory Audit", "workflow_template": "inventory_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "cost_optimization_audit", "name": "Cost Optimization Audit", "workflow_template": "cost_audit", "readiness": "workflow_ready", "priority": "growth"},
+        {"id": "vendor_audit", "name": "Vendor Audit", "workflow_template": "operational_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "payroll_audit", "name": "Payroll Audit", "workflow_template": "payroll_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "performance_audit", "name": "Performance Audit", "workflow_template": "performance_audit", "readiness": "workflow_ready", "priority": "growth"},
+        {"id": "quality_audit", "name": "Quality Audit", "workflow_template": "quality_audit", "readiness": "workflow_ready", "priority": "growth"}
+      ]
+    },
+    {
+      "division_id": "compliance_regulatory_audits",
+      "name": "Compliance & Regulatory Audits",
+      "description": "Tax, company law, financial regulation, anti-money-laundering, ESG, and cross-border compliance assurance.",
+      "services": [
+        {"id": "gst_audit", "name": "GST Audit / GST Reconciliation", "workflow_template": "tax_audit", "readiness": "mapped_ready", "priority": "core"},
+        {"id": "income_tax_audit", "name": "Income Tax Audit", "workflow_template": "tax_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "transfer_pricing_audit", "name": "Transfer Pricing Audit", "workflow_template": "tax_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "sebi_compliance_audit", "name": "SEBI Compliance Audit", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "rbi_compliance_audit", "name": "RBI Compliance Audit", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "companies_act_compliance", "name": "Companies Act Compliance", "workflow_template": "statutory_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "fema_audit", "name": "FEMA Audit", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "aml_kyc_audit", "name": "AML/KYC Audit", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "sox_compliance_audit", "name": "SOX Compliance Audit", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "esg_compliance_audit", "name": "ESG Compliance Audit", "workflow_template": "esg_deep_audit", "readiness": "workflow_ready", "priority": "growth"},
+        {"id": "secretarial_compliance_review", "name": "Secretarial Compliance Review", "workflow_template": "statutory_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "single_audit", "name": "Single Audit / Grant Compliance Audit", "workflow_template": "single_audit", "readiness": "workflow_ready", "priority": "specialist"},
+        {"id": "environmental_compliance_audit", "name": "Environmental Compliance Audit", "workflow_template": "environmental_audit", "readiness": "workflow_ready", "priority": "growth"}
+      ]
+    },
+    {
+      "division_id": "forensic_investigation_audits",
+      "name": "Forensic & Investigation Audits",
+      "description": "Fraud, misconduct, financial crime, evidence reconstruction, asset tracing, and litigation support.",
+      "services": [
+        {"id": "forensic_audit", "name": "Forensic Audit", "workflow_template": "forensic_audit", "readiness": "workflow_ready", "priority": "growth"},
+        {"id": "fraud_investigation", "name": "Fraud Investigation", "workflow_template": "forensic_audit", "readiness": "workflow_ready", "priority": "growth"},
+        {"id": "financial_crime_investigation", "name": "Financial Crime Investigation", "workflow_template": "forensic_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "data_leak_investigation", "name": "Data Leak Investigation", "workflow_template": "it_audit", "readiness": "specialist_engine_ready", "priority": "emerging"},
+        {"id": "digital_forensics", "name": "Digital Forensics", "workflow_template": "it_audit", "readiness": "specialist_engine_ready", "priority": "emerging"},
+        {"id": "anti_bribery_investigation", "name": "Anti-Bribery Investigation", "workflow_template": "forensic_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "whistleblower_investigation", "name": "Whistleblower Investigation", "workflow_template": "forensic_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "litigation_support", "name": "Litigation Support", "workflow_template": "forensic_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "asset_tracing", "name": "Asset Tracing", "workflow_template": "forensic_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "corporate_intelligence", "name": "Corporate Intelligence", "workflow_template": "forensic_risk_profile", "readiness": "workflow_ready", "priority": "growth"}
+      ]
+    },
+    {
+      "division_id": "technology_cyber_audits",
+      "name": "Technology & Cyber Audits",
+      "description": "IT general controls, cyber assurance, privacy, cloud, ERP/SAP, SOC, AI, blockchain, and smart contract risk.",
+      "services": [
+        {"id": "it_audit", "name": "IT Audit", "workflow_template": "it_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "cybersecurity_audit", "name": "Cybersecurity Audit", "workflow_template": "it_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "cloud_security_audit", "name": "Cloud Security Audit", "workflow_template": "it_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "erp_sap_audit", "name": "ERP/SAP Audit", "workflow_template": "it_audit", "readiness": "mapped_ready", "priority": "growth"},
+        {"id": "data_privacy_audit", "name": "Data Privacy Audit", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "iso_27001_audit", "name": "ISO 27001 Audit", "workflow_template": "it_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "soc_1_audit", "name": "SOC 1 Audit", "workflow_template": "it_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "soc_2_audit", "name": "SOC 2 Audit", "workflow_template": "it_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "penetration_testing", "name": "Penetration Testing", "workflow_template": "it_audit", "readiness": "specialist_engine_ready", "priority": "emerging"},
+        {"id": "ai_governance_audit", "name": "AI Governance Audit", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "algorithm_audit", "name": "Algorithm Audit", "workflow_template": "compliance_audit", "readiness": "specialist_engine_ready", "priority": "emerging"},
+        {"id": "blockchain_audit", "name": "Blockchain Audit", "workflow_template": "it_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "smart_contract_audit", "name": "Smart Contract Audit", "workflow_template": "it_audit", "readiness": "specialist_engine_ready", "priority": "emerging"},
+        {"id": "digital_transformation_risk_audit", "name": "Digital Transformation Risk Audit", "workflow_template": "operational_audit", "readiness": "mapped_ready", "priority": "emerging"}
+      ]
+    },
+    {
+      "division_id": "specialized_industry_audits",
+      "name": "Specialized Industry Audits",
+      "description": "Sector-specific audit packs for BFSI, manufacturing, healthcare, energy, infrastructure, nonprofits, and public programs.",
+      "services": [
+        {"id": "treasury_audit", "name": "Treasury Audit", "workflow_template": "financial_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "credit_audit", "name": "Credit Audit", "workflow_template": "financial_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "loan_audit", "name": "Loan Audit", "workflow_template": "financial_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "nbfc_audit", "name": "NBFC Audit", "workflow_template": "statutory_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "insurance_audit", "name": "Insurance Audit", "workflow_template": "statutory_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "cost_audit", "name": "Cost Audit", "workflow_template": "cost_audit", "readiness": "workflow_ready", "priority": "core"},
+        {"id": "factory_audit", "name": "Factory Audit", "workflow_template": "operational_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "production_audit", "name": "Production Audit", "workflow_template": "operational_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "pharma_compliance_audit", "name": "Pharma Compliance Audit", "workflow_template": "quality_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "hospital_audit", "name": "Hospital Audit", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "project_audit", "name": "Project Audit", "workflow_template": "performance_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "epc_audit", "name": "EPC Audit", "workflow_template": "performance_audit", "readiness": "mapped_ready", "priority": "specialist"},
+        {"id": "environmental_audit", "name": "Environmental Audit", "workflow_template": "environmental_audit", "readiness": "workflow_ready", "priority": "growth"},
+        {"id": "social_audit", "name": "Social Audit / CSR Impact Audit", "workflow_template": "social_audit", "readiness": "workflow_ready", "priority": "growth"}
+      ]
+    },
+    {
+      "division_id": "next_generation_assurance",
+      "name": "Next-Generation Assurance",
+      "description": "High-growth offerings where Arkashri can differentiate through deterministic AI governance, continuous monitoring, and tamper-evident evidence trails.",
+      "services": [
+        {"id": "ai_audit", "name": "AI Audit", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "continuous_monitoring", "name": "Continuous Monitoring", "workflow_template": "internal_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "real_time_risk_intelligence", "name": "Real-Time Risk Intelligence", "workflow_template": "internal_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "autonomous_control_testing", "name": "Autonomous Control Testing", "workflow_template": "it_audit", "readiness": "specialist_engine_ready", "priority": "emerging"},
+        {"id": "data_governance_assurance", "name": "Data Governance Assurance", "workflow_template": "compliance_audit", "readiness": "mapped_ready", "priority": "emerging"},
+        {"id": "model_risk_audit", "name": "Model Risk Audit", "workflow_template": "compliance_audit", "readiness": "specialist_engine_ready", "priority": "emerging"},
+        {"id": "third_party_risk_audit", "name": "Third-Party Risk Audit", "workflow_template": "operational_audit", "readiness": "mapped_ready", "priority": "emerging"}
+      ]
+    }
+  ]
+}

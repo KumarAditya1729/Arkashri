@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from arkashri.db import get_session
-from arkashri.models import ChainAnchor, ClientRole
+import uuid
+
+from arkashri.models import ChainAnchor, ClientRole, Engagement
 from arkashri.schemas import ChainAnchorOut, ChainAttestationOut
 from arkashri.dependencies import require_api_client, AuthContext
 from arkashri.schemas import SystemAuditLogOut
@@ -29,11 +31,12 @@ async def get_evidence_ledger(
 ):
     """
     Global evidence ledger for administrators.
-    Displays all blockchain anchors across all tenants.
+    Displays blockchain anchors for the authenticated tenant.
     """
     stmt = (
         select(ChainAnchor)
         .options(joinedload(ChainAnchor.attestations))
+        .where(ChainAnchor.tenant_id == _auth.tenant_id)
         .order_by(ChainAnchor.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -52,14 +55,21 @@ async def get_system_audit_logs(
     _auth: AuthContext = Depends(require_api_client({ClientRole.ADMIN})),
 ):
     """
-    Retrieves the system-wide audit trail for compliance review.
+    Retrieves the tenant audit trail for compliance review.
     """
     from arkashri.models import SystemAuditLog
-    stmt = select(SystemAuditLog).order_by(SystemAuditLog.created_at.desc()).limit(limit).offset(offset)
+    if tenant_id and tenant_id != _auth.tenant_id:
+        raise HTTPException(status_code=403, detail="Cannot read audit logs for another tenant.")
+    effective_tenant = tenant_id or _auth.tenant_id
+    stmt = (
+        select(SystemAuditLog)
+        .where(SystemAuditLog.tenant_id == effective_tenant)
+        .order_by(SystemAuditLog.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     if action:
         stmt = stmt.where(SystemAuditLog.action == action)
-    if tenant_id:
-        stmt = stmt.where(SystemAuditLog.tenant_id == tenant_id)
         
     result = await session.execute(stmt)
     return result.scalars().all()
@@ -73,7 +83,20 @@ async def export_audit_pdf(
     """
     Generates and returns a regulatory PDF report for an engagement.
     """
-    file_path = await generate_regulatory_pdf(db, engagement_id)
+    try:
+        eid = uuid.UUID(engagement_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid engagement_id UUID") from exc
+    engagement = await db.scalar(
+        select(Engagement).where(
+            Engagement.id == eid,
+            Engagement.tenant_id == _auth.tenant_id,
+        )
+    )
+    if engagement is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    file_path = await generate_regulatory_pdf(db, eid, tenant_id=_auth.tenant_id)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=500, detail="PDF generation failed.")
         

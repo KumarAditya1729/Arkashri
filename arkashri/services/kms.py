@@ -4,12 +4,15 @@ from __future__ import annotations
 import base64
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.exceptions import InvalidSignature
 
 from arkashri.config import get_settings
+from arkashri.services.canonical import canonical_json_bytes
 
 logger = logging.getLogger("services.kms")
 
@@ -44,20 +47,74 @@ class EnvKeyProvider(BaseKeyProvider):
 
 class AWSKMSProvider(BaseKeyProvider):
     """
-    AWS KMS Integration Provider.
-    In production, this would use boto3.kms.decrypt().
+    AWS KMS provider for production asymmetric audit-seal signatures.
+
+    `kms_asymmetric_key_id` may be either a single KMS key id/arn/alias or a
+    format string containing `{tenant_id}` for per-tenant key aliases.
     """
     
-    def __init__(self, region: str):
+    def __init__(self, region: str, asymmetric_key_id: str | None):
         self.region = region
-        # self.client = boto3.client("kms", region_name=region)
+        self.asymmetric_key_id = asymmetric_key_id
+        self._client = None
+
+    @property
+    def client(self) -> Any:
+        if self._client is None:
+            try:
+                import botocore.session
+            except ImportError as exc:
+                raise RuntimeError(
+                    "botocore is required for KMS_PROVIDER=aws. Install botocore and configure "
+                    "AWS credentials with kms:Sign and kms:GetPublicKey permissions."
+                ) from exc
+            self._client = botocore.session.get_session().create_client(
+                "kms",
+                region_name=self.region,
+            )
+        return self._client
+
+    def _key_id_for_tenant(self, tenant_id: str) -> str:
+        if not self.asymmetric_key_id:
+            raise RuntimeError("KMS_ASYMMETRIC_KEY_ID is required for AWS KMS signing.")
+        return self.asymmetric_key_id.format(tenant_id=tenant_id)
         
     def get_key(self, key_id: str) -> bytes:
-        # In a real implementation:
-        # response = self.client.decrypt(KeyId=key_id, CiphertextBlob=...)
-        # return response['Plaintext']
-        logger.warning(f"AWS KMS Key Retrieval triggered for {key_id} (Skeleton Mode)")
-        raise NotImplementedError("AWS KMS provider requires production boto3 configuration.")
+        raise NotImplementedError(
+            "AWS KMS raw key export is intentionally unsupported. Use sign_payload/get_public_key_pem "
+            "for audit seals, or envelope-encrypt DEKs with a dedicated KMS data-key flow."
+        )
+
+    def sign_payload(self, tenant_id: str, payload: dict) -> bytes:
+        response = self.client.sign(
+            KeyId=self._key_id_for_tenant(tenant_id),
+            Message=canonical_json_bytes(payload),
+            MessageType="RAW",
+            SigningAlgorithm="ECDSA_SHA_256",
+        )
+        return response["Signature"]
+
+    def get_public_key_pem(self, tenant_id: str) -> str:
+        response = self.client.get_public_key(KeyId=self._key_id_for_tenant(tenant_id))
+        public_key = serialization.load_der_public_key(response["PublicKey"])
+        pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        return pem.decode("utf-8")
+
+    def verify_payload(self, tenant_id: str, payload: dict, signature: bytes) -> bool:
+        try:
+            public_key = serialization.load_pem_public_key(
+                self.get_public_key_pem(tenant_id).encode("utf-8")
+            )
+            if not isinstance(public_key, EllipticCurvePublicKey):
+                raise TypeError("AWS KMS public key is not an elliptic-curve signing key.")
+            public_key.verify(signature, canonical_json_bytes(payload), ec.ECDSA(hashes.SHA256()))
+            return True
+        except (InvalidSignature, ValueError, TypeError) as exc:
+            logger.warning("aws_kms_signature_verification_failed", exc_info=exc)
+            return False
 
 class AsymmetricKeyProvider(BaseKeyProvider):
     """
@@ -108,6 +165,26 @@ class AsymmetricKeyProvider(BaseKeyProvider):
         priv_key = self._keys[tenant_id]
         return priv_key, priv_key.public_key()
 
+    def sign_payload(self, tenant_id: str, payload: dict) -> bytes:
+        priv, _ = self.get_tenant_keypair(tenant_id)
+        return priv.sign(canonical_json_bytes(payload), ec.ECDSA(hashes.SHA256()))
+
+    def get_public_key_pem(self, tenant_id: str) -> str:
+        _, pub = self.get_tenant_keypair(tenant_id)
+        pem = pub.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        return pem.decode('utf-8')
+
+    def verify_payload(self, tenant_id: str, payload: dict, signature: bytes) -> bool:
+        try:
+            _, pub = self.get_tenant_keypair(tenant_id)
+            pub.verify(signature, canonical_json_bytes(payload), ec.ECDSA(hashes.SHA256()))
+            return True
+        except (InvalidSignature, ValueError, TypeError):
+            return False
+
 class KeyVaultService:
     """
     Primary orchestrator for Enterprise Key Management.
@@ -128,7 +205,10 @@ class KeyVaultService:
         provider_type = getattr(self.settings, "kms_provider", "env").lower()
         
         if provider_type == "aws":
-            return AWSKMSProvider(region=self.settings.aws_region)
+            return AWSKMSProvider(
+                region=self.settings.aws_region,
+                asymmetric_key_id=self.settings.kms_asymmetric_key_id,
+            )
         return EnvKeyProvider()
 
     def get_active_key(self, key_id: str = "seal_v1") -> bytes:
@@ -149,12 +229,21 @@ class KeyVaultService:
 
     def get_tenant_public_key_pem(self, tenant_id: str) -> str:
         """Retrieves the public key in PEM format for external auditor verification."""
-        _, pub = self.asymmetric_provider.get_tenant_keypair(tenant_id)
-        pem = pub.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
-        return pem.decode('utf-8')
+        if isinstance(self.provider, AWSKMSProvider):
+            return self.provider.get_public_key_pem(tenant_id)
+        return self.asymmetric_provider.get_public_key_pem(tenant_id)
+
+    def sign_tenant_payload(self, tenant_id: str, payload: dict) -> bytes:
+        """Sign a canonical payload without exporting production private keys."""
+        if isinstance(self.provider, AWSKMSProvider):
+            return self.provider.sign_payload(tenant_id, payload)
+        return self.asymmetric_provider.sign_payload(tenant_id, payload)
+
+    def verify_tenant_payload(self, tenant_id: str, payload: dict, signature: bytes) -> bool:
+        """Verify a canonical payload signature against the active tenant public key."""
+        if isinstance(self.provider, AWSKMSProvider):
+            return self.provider.verify_payload(tenant_id, payload, signature)
+        return self.asymmetric_provider.verify_payload(tenant_id, payload, signature)
 
     def generate_dek(self) -> bytes:
         """Creates a new Data Encryption Key (DEK) for crypto-shredding."""
@@ -183,7 +272,7 @@ class KeyVaultService:
         try:
             return aesgcm.decrypt(iv, ciphertext, None)
         except Exception as e:
-            logger.error("DEK decryption failed: possible key mismatch or tampering", error=str(e))
+            logger.error("DEK decryption failed: possible key mismatch or tampering: %s", e)
             raise RuntimeError("DEK decryption failed") from e
 
     def encrypt_dek(self, raw_dek: bytes) -> bytes:

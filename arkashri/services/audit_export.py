@@ -15,6 +15,7 @@ logger = structlog.get_logger("services.audit_export")
 async def generate_regulatory_pdf(
     db: AsyncSession,
     engagement_id: uuid.UUID,
+    tenant_id: str,
     include_evidence: bool = True
 ) -> str:
     """
@@ -26,7 +27,12 @@ async def generate_regulatory_pdf(
     os.makedirs(settings.upload_dir, exist_ok=True)
     
     # 1. Gather all data
-    eng = (await db.scalars(select(Engagement).where(Engagement.id == engagement_id))).first()
+    eng = (await db.scalars(
+        select(Engagement).where(
+            Engagement.id == engagement_id,
+            Engagement.tenant_id == tenant_id,
+        )
+    )).first()
     if not eng:
         raise ValueError("Engagement not found")
         

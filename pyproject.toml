@@ -77,6 +77,16 @@ include = ["arkashri*"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = [
+  "build",
+  "node_modules",
+  "arkashri-ai-engineer",
+  "scripts",
+  "test_*.py",
+  "verify_*.py",
+  "fix_user.py",
+  "run_e2e_local.py",
+]
 
 [tool.pytest.ini_options]
 addopts = "-q"

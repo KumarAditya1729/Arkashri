@@ -34,6 +34,30 @@ Status: not ready for unrestricted client data until every hard gate below is pa
    - Error screens must guide recovery without leaking backend internals or client data.
    - Production incidents must be traceable from frontend correlation id to backend logs.
 
+## Current Production Startup Locks
+
+The backend now refuses to boot in `APP_ENV=production` unless these unsafe defaults are replaced:
+
+- `AUTH_ENFORCED=true`
+- `ENABLE_MOCK_DATA=false`
+- strong `SESSION_SECRET_KEY`
+- `KMS_PROVIDER=aws` with `KMS_ASYMMETRIC_KEY_ID` for AWS KMS ECC_NIST_P256 seal signing
+- strong `BOOTSTRAP_ADMIN_TOKEN`
+- PostgreSQL `DATABASE_URL`
+- managed `REDIS_URL`
+- remote evidence storage, including `EVIDENCE_S3_BUCKET` for S3
+- immutable `S3_WORM_BUCKET`
+- production-only `CORS_ORIGINS`, with no wildcard or localhost origins
+
+Run the environment/deployment gate before promotion:
+
+```bash
+APP_ENV=production \
+ARKASHRI_BACKEND_URL="https://api.example.com" \
+ARKASHRI_FRONTEND_URL="https://app.example.com" \
+python3 scripts/production_readiness_check.py
+```
+
 ## Current Frontend Controls Added
 
 - Login/register tokens are stored only in HttpOnly cookies; browser JavaScript receives only user/session metadata.
@@ -100,3 +124,21 @@ GET  /api/v1/readiness/engagements/{engagement_id}/books-health
 
 - Finish the CA-first UX pass for dashboard, planning, risks, controls, testing, review, reports, and seal flows.
 - Complete a formal security review for tenant isolation, evidence file access, logs, backups, and immutability.
+- Provision and test real production dependencies: PostgreSQL, Redis, S3/WORM bucket, external KMS, observability, backups, and AI provider credentials.
+- Run the first-audit release gate and deployed smoke checks against staging before accepting unrestricted client data.
+
+## Big 4 Automation Completion Layer
+
+The platform now exposes a CA-controlled automation layer for the remaining market-grade gaps:
+
+- `POST /api/v1/data-refinery/preview-excel` previews multi-sheet `.xlsx` workbooks without requiring Excel macros or local desktop tools.
+- `POST /api/v1/data-refinery/preview-bank-pdf` accepts PDF bank statements and blocks ingestion until a production OCR provider is configured and CA review is performed.
+- `GET /api/v1/audit-automation/capabilities` reports connector readiness for Tally, Zoho, Busy, SAP, Oracle, GST Portal, MCA, Income Tax, and PDF OCR.
+- `POST /api/v1/audit-automation/engagements/{id}/sampling-plan` generates deterministic risk-weighted samples.
+- `POST /api/v1/audit-automation/engagements/{id}/agents/run` runs the revenue, expense, GST, bank, fraud, IFC, CARO, and related-party agent pack as human-review-required decision support.
+- `POST /api/v1/audit-automation/engagements/{id}/confirmations` records bank/customer/vendor confirmation requests in the audit chain.
+- `POST /api/v1/audit-automation/engagements/{id}/management-responses` records management responses and remediation ownership in the audit chain.
+
+These features reduce manual manpower, but they do not remove CA responsibility. Opinion/sign-off still requires partner judgment, evidence review, legal/compliance review, and documented management representations.
+
+Additional hard gates in `scripts/production_readiness_check.py` now cover OCR provider readiness, backups, restore-drill evidence, metrics/observability, and legal/compliance sign-off metadata.

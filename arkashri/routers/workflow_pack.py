@@ -1,7 +1,12 @@
 # pyre-ignore-all-errors
 from fastapi import APIRouter, HTTPException
 from arkashri.schemas import WorkflowPackIndexOut, WorkflowTemplateOut
-from arkashri.services.workflow_pack import get_workflow_pack_summary, load_workflow_template
+from arkashri.services.workflow_pack import (
+    get_master_lifecycle_summary,
+    get_service_catalog_summary,
+    get_workflow_pack_summary,
+    load_workflow_template,
+)
 
 router = APIRouter()
 
@@ -10,6 +15,22 @@ def workflow_pack_index() -> WorkflowPackIndexOut:
     try:
         summary = get_workflow_pack_summary()
         return WorkflowPackIndexOut(**summary)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/service-catalog")
+def workflow_pack_service_catalog() -> dict:
+    try:
+        return get_service_catalog_summary()
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/master-lifecycle")
+def workflow_pack_master_lifecycle() -> dict:
+    try:
+        return get_master_lifecycle_summary()
     except FileNotFoundError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
