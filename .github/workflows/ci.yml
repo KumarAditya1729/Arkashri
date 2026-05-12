@@ -6,10 +6,16 @@ on:
     branches:
       - main
       - master
+      - "codex/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Check out code
@@ -42,6 +48,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Check out backend repository
@@ -76,9 +83,24 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Smoke public frontend routes
+        working-directory: frontend
+        run: |
+          npm run start -- --hostname 127.0.0.1 --port 3000 &
+          SERVER_PID=$!
+          trap "kill $SERVER_PID" EXIT
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/sign-in >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          SMOKE_BASE_URL=http://127.0.0.1:3000 npm run smoke
+
   docker:
     runs-on: ubuntu-latest
     needs: [backend]
+    timeout-minutes: 20
 
     steps:
       - name: Check out code
