@@ -432,12 +432,17 @@ def build_excel_refinery_preview(
         total_rows += len(data_rows)
         audit_ready_rows += sum(1 for row in normalized if row["date"] and row["signed_amount"])
         critical_count += sum(1 for issue in issues if issue.severity == "CRITICAL")
+        sheet_ready_rows = sum(1 for row in normalized if row["date"] and row["signed_amount"])
+        sheet_critical_count = sum(1 for issue in issues if issue.severity == "CRITICAL")
+        sheet_score = 0 if len(data_rows) == 0 else max(0, min(100, round((sheet_ready_rows / len(data_rows)) * 100) - sheet_critical_count * 10))
         sheet_previews.append({
             "sheet_name": sheet_name,
             "headers": headers,
             "suggested_mapping": mapping,
             "total_rows": len(data_rows),
-            "audit_ready_rows": sum(1 for row in normalized if row["date"] and row["signed_amount"]),
+            "audit_ready_rows": sheet_ready_rows,
+            "readiness_score": sheet_score,
+            "can_ingest": len(data_rows) > 0 and sheet_critical_count == 0,
             "issues": [issue.to_dict() for issue in issues[:ISSUE_LIMIT]],
             "normalized_preview": [{k: v for k, v in row.items() if k not in {"raw_row", "payload_hash"}} for row in normalized[:PREVIEW_ROW_LIMIT]],
             "category_breakdown": _category_breakdown(normalized),

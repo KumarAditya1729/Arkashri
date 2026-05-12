@@ -66,6 +66,8 @@ def test_excel_multi_sheet_preview_maps_workbook() -> None:
     assert preview["audit_ready_rows"] == 2
     assert len(preview["source_file_hash"]) == 64
     assert {sheet["sheet_name"] for sheet in preview["sheets"]} == {"Sales", "Bank"}
+    assert all("readiness_score" in sheet for sheet in preview["sheets"])
+    assert all("can_ingest" in sheet for sheet in preview["sheets"])
 
 
 @pytest.mark.asyncio
