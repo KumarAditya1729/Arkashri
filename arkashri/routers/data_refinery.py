@@ -39,6 +39,9 @@ class DataRefineryPreviewOut(BaseModel):
     normalized_preview: list[dict[str, Any]]
     category_breakdown: dict[str, int]
     risk_flag_breakdown: dict[str, int]
+    quality_dimensions: dict[str, Any]
+    column_profiles: dict[str, dict[str, Any]]
+    cleaning_suggestions: list[dict[str, str]]
 
 
 class DataRefineryIngestOut(BaseModel):

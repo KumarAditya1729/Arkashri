@@ -8,7 +8,7 @@ import re
 import uuid
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from xml.etree import ElementTree as ET
 from typing import Any, Literal
 
@@ -25,6 +25,7 @@ MAX_HEADER_COUNT = 200
 MAX_CELL_CHARS = 5000
 PREVIEW_ROW_LIMIT = 25
 ISSUE_LIMIT = 100
+EXCEL_HEADER_SCAN_ROWS = 20
 
 
 class DataRefineryError(ValueError):
@@ -48,6 +49,10 @@ CANONICAL_FIELDS = {
     "tax_amount": ("gst", "gst amount", "tax", "tax amount", "igst", "cgst", "sgst"),
     "currency": ("currency", "curr", "ccy"),
 }
+
+DATE_FIELDS = {"date"}
+AMOUNT_FIELDS = {"debit", "credit", "amount", "tax_amount"}
+GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 
 
 @dataclass(frozen=True)
@@ -126,6 +131,15 @@ def _parse_date(value: Any) -> str | None:
     text = _clean_text(value)
     if not text:
         return None
+    if re.fullmatch(r"\d+(\.\d+)?", text):
+        try:
+            serial = float(text)
+        except ValueError:
+            serial = 0
+        if 1 <= serial <= 80000:
+            # Excel's serial date epoch includes the 1900 leap-year bug. This
+            # formula matches common spreadsheet exports closely enough for audit intake.
+            return (datetime(1899, 12, 30) + timedelta(days=serial)).strftime("%Y-%m-%d")
     for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%Y%m%d", "%d.%m.%Y"):
         try:
             return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
@@ -138,7 +152,7 @@ def _parse_amount(value: Any) -> float | None:
     text = _clean_text(value)
     if not text:
         return None
-    negative = text.startswith("(") and text.endswith(")")
+    negative = text.startswith("(") and text.endswith(")") or text.lower().endswith((" dr", " debit"))
     normalized = re.sub(r"[^\d.\-]", "", text)
     if normalized in {"", "-", "."}:
         return None
@@ -147,6 +161,96 @@ def _parse_amount(value: Any) -> float | None:
     except ValueError:
         return None
     return -abs(amount) if negative else amount
+
+
+def _quality_dimensions(
+    rows: list[dict[str, Any]],
+    normalized: list[dict[str, Any]],
+    issues: list[RefineryIssue],
+    mapping: dict[str, str],
+) -> dict[str, Any]:
+    critical = sum(1 for issue in issues if issue.severity == "CRITICAL")
+    high = sum(1 for issue in issues if issue.severity == "HIGH")
+    medium = sum(1 for issue in issues if issue.severity == "MEDIUM")
+    duplicate_refs = sum(1 for issue in issues if issue.title == "Duplicate reference detected")
+    ready_rows = sum(1 for row in normalized if row["date"] and row["signed_amount"])
+    mapped_fields = sorted(k for k, v in mapping.items() if v)
+    return {
+        "completeness_score": 0 if not rows else round((ready_rows / len(rows)) * 100),
+        "critical_issue_count": critical,
+        "high_issue_count": high,
+        "medium_issue_count": medium,
+        "duplicate_reference_count": duplicate_refs,
+        "mapped_field_count": len(mapped_fields),
+        "mapped_fields": mapped_fields,
+    }
+
+
+def _column_profiles(headers: list[str], rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    profiles: dict[str, dict[str, Any]] = {}
+    sample_size = min(len(rows), 100)
+    for header in headers:
+        values = [_clean_text(row.get(header)) for row in rows[:sample_size]]
+        non_empty = [value for value in values if value]
+        date_hits = sum(1 for value in non_empty if _parse_date(value))
+        amount_hits = sum(1 for value in non_empty if _parse_amount(value) is not None)
+        unique_count = len(set(non_empty))
+        inferred_type = "text"
+        if non_empty and date_hits / len(non_empty) >= 0.75:
+            inferred_type = "date"
+        elif non_empty and amount_hits / len(non_empty) >= 0.75:
+            inferred_type = "amount"
+        profiles[header] = {
+            "non_empty": len(non_empty),
+            "blank_count": sample_size - len(non_empty),
+            "unique_count": unique_count,
+            "inferred_type": inferred_type,
+            "sample_values": non_empty[:3],
+        }
+    return profiles
+
+
+def _cleaning_suggestions(
+    *,
+    issues: list[RefineryIssue],
+    mapping: dict[str, str],
+    source_type: RefinerySourceType,
+    column_profiles: dict[str, dict[str, Any]],
+) -> list[dict[str, str]]:
+    suggestions: list[dict[str, str]] = []
+    if not mapping.get("date"):
+        date_candidates = [name for name, profile in column_profiles.items() if profile["inferred_type"] == "date"]
+        suggestions.append({
+            "type": "mapping",
+            "title": "Map transaction date",
+            "action": f"Use {date_candidates[0]} as date." if date_candidates else "Add or select a transaction date column.",
+        })
+    if not (mapping.get("amount") or mapping.get("debit") or mapping.get("credit")):
+        amount_candidates = [name for name, profile in column_profiles.items() if profile["inferred_type"] == "amount"]
+        suggestions.append({
+            "type": "mapping",
+            "title": "Map amount/debit/credit",
+            "action": f"Review numeric columns: {', '.join(amount_candidates[:3])}." if amount_candidates else "Add amount or debit/credit columns.",
+        })
+    if source_type in {"sales_register", "purchase_register"} and not mapping.get("gstin"):
+        suggestions.append({
+            "type": "compliance",
+            "title": "Add GSTIN mapping",
+            "action": "Map party GSTIN to enable GST reconciliation, blocked-credit checks and vendor/customer validation.",
+        })
+    if any(issue.title == "Duplicate reference detected" for issue in issues):
+        suggestions.append({
+            "type": "dedupe",
+            "title": "Review duplicate vouchers",
+            "action": "Use voucher number plus date plus amount as the duplicate key before final ingestion.",
+        })
+    if any(issue.field == "description" for issue in issues):
+        suggestions.append({
+            "type": "classification",
+            "title": "Improve narration quality",
+            "action": "Add narration, ledger or counterparty names so Arkashri can classify audit areas and risk flags.",
+        })
+    return suggestions[:8]
 
 
 def _amount_from_row(row: dict[str, Any], mapping: dict[str, str]) -> tuple[float | None, str | None]:
@@ -245,6 +349,10 @@ def normalize_rows(
             issues.append(RefineryIssue("HIGH", index, "reference", "Duplicate reference detected", "Review duplicate voucher/reference before ingestion."))
         seen_refs.add(reference)
 
+        gstin = _clean_text(row.get(mapping.get("gstin", ""))) if mapping.get("gstin") else ""
+        if gstin and not GSTIN_RE.match(gstin.upper()):
+            issues.append(RefineryIssue("MEDIUM", index, "gstin", "Invalid GSTIN format", "Review GSTIN before GST reconciliation or vendor/customer validation."))
+
         payload = {
             "engagement_id": str(engagement_id) if engagement_id else None,
             "ref": reference[:64],
@@ -256,7 +364,7 @@ def normalize_rows(
             "currency": _clean_text(row.get(mapping.get("currency", ""))) if mapping.get("currency") else default_currency,
             "account_name": account_name,
             "counterparty": _clean_text(row.get(mapping.get("counterparty", ""))) if mapping.get("counterparty") else "",
-            "gstin": _clean_text(row.get(mapping.get("gstin", ""))) if mapping.get("gstin") else "",
+            "gstin": gstin.upper(),
             "tax_amount": _parse_amount(row.get(mapping.get("tax_amount", ""))) if mapping.get("tax_amount") else 0,
             "mapped_category": _mapped_category(account_name, description, source_type),
             "source": "DATA_REFINERY",
@@ -300,6 +408,7 @@ def build_refinery_preview(
     high_count = sum(1 for issue in issues if issue.severity == "HIGH")
     audit_ready_rows = sum(1 for row in normalized if row["date"] and row["signed_amount"])
     readiness_score = max(0, min(100, round((audit_ready_rows / len(rows)) * 100) - critical_count * 10 - high_count * 5))
+    column_profiles = _column_profiles(headers, rows)
     return {
         "source_type": source_type,
         "source_file_hash": file_hash,
@@ -313,6 +422,14 @@ def build_refinery_preview(
         "normalized_preview": [{k: v for k, v in row.items() if k not in {"raw_row", "payload_hash"}} for row in normalized[:PREVIEW_ROW_LIMIT]],
         "category_breakdown": _category_breakdown(normalized),
         "risk_flag_breakdown": _risk_flag_breakdown(normalized),
+        "quality_dimensions": _quality_dimensions(rows, normalized, issues, mapping),
+        "column_profiles": column_profiles,
+        "cleaning_suggestions": _cleaning_suggestions(
+            issues=issues,
+            mapping=mapping,
+            source_type=source_type,
+            column_profiles=column_profiles,
+        ),
     }
 
 
@@ -397,6 +514,25 @@ def _read_xlsx_rows(xlsx_bytes: bytes) -> dict[str, list[list[str]]]:
     return sheets
 
 
+def _header_score(values: list[str]) -> int:
+    cleaned = [_clean_header(value) for value in values if _clean_header(value)]
+    if not cleaned:
+        return 0
+    score = len(cleaned)
+    for canonical, candidates in CANONICAL_FIELDS.items():
+        if any(any(_clean_header(candidate) in value for candidate in candidates) for value in cleaned):
+            score += 5 if canonical in {"date", "amount", "debit", "credit", "description"} else 2
+    return score
+
+
+def _detect_header_row(rows: list[list[str]]) -> int:
+    scan = rows[:EXCEL_HEADER_SCAN_ROWS]
+    if not scan:
+        return 0
+    scored = [(index, _header_score(row)) for index, row in enumerate(scan)]
+    return max(scored, key=lambda item: item[1])[0]
+
+
 def build_excel_refinery_preview(
     xlsx_bytes: bytes,
     *,
@@ -412,11 +548,12 @@ def build_excel_refinery_preview(
     for sheet_name, rows in workbook.items():
         if not rows:
             continue
-        headers = [header.strip() or f"Column {index + 1}" for index, header in enumerate(rows[0])]
+        header_index = _detect_header_row(rows)
+        headers = [header.strip() or f"Column {index + 1}" for index, header in enumerate(rows[header_index])]
         if len(headers) > MAX_HEADER_COUNT:
             raise DataRefineryError(f"Sheet {sheet_name} has too many columns. Maximum allowed: {MAX_HEADER_COUNT}.")
         data_rows = []
-        for raw in rows[1:]:
+        for raw in rows[header_index + 1:]:
             row = {header: raw[index] if index < len(raw) else "" for index, header in enumerate(headers)}
             data_rows.append(row)
         if not data_rows:
@@ -434,9 +571,11 @@ def build_excel_refinery_preview(
         critical_count += sum(1 for issue in issues if issue.severity == "CRITICAL")
         sheet_ready_rows = sum(1 for row in normalized if row["date"] and row["signed_amount"])
         sheet_critical_count = sum(1 for issue in issues if issue.severity == "CRITICAL")
+        column_profiles = _column_profiles(headers, data_rows)
         sheet_score = 0 if len(data_rows) == 0 else max(0, min(100, round((sheet_ready_rows / len(data_rows)) * 100) - sheet_critical_count * 10))
         sheet_previews.append({
             "sheet_name": sheet_name,
+            "header_row_number": header_index + 1,
             "headers": headers,
             "suggested_mapping": mapping,
             "total_rows": len(data_rows),
@@ -447,6 +586,14 @@ def build_excel_refinery_preview(
             "normalized_preview": [{k: v for k, v in row.items() if k not in {"raw_row", "payload_hash"}} for row in normalized[:PREVIEW_ROW_LIMIT]],
             "category_breakdown": _category_breakdown(normalized),
             "risk_flag_breakdown": _risk_flag_breakdown(normalized),
+            "quality_dimensions": _quality_dimensions(data_rows, normalized, issues, mapping),
+            "column_profiles": column_profiles,
+            "cleaning_suggestions": _cleaning_suggestions(
+                issues=issues,
+                mapping=mapping,
+                source_type=source_type,
+                column_profiles=column_profiles,
+            ),
         })
     readiness_score = 0 if total_rows == 0 else max(0, min(100, round((audit_ready_rows / total_rows) * 100) - critical_count * 10))
     return {
@@ -469,16 +616,24 @@ def build_pdf_bank_statement_intake(pdf_bytes: bytes) -> dict[str, Any]:
     if not pdf_bytes.startswith(b"%PDF"):
         raise DataRefineryError("Uploaded file is not a valid PDF.")
     provider = (get_settings().ocr_provider or "").strip().lower()
-    supported = {"aws_textract", "google_document_ai", "azure_document_intelligence"}
+    supported = {"text_pdf", "aws_textract", "google_document_ai", "azure_document_intelligence"}
     provider_ready = provider in supported
+    extracted_text = _extract_text_from_pdf_bytes(pdf_bytes) if provider in {"", "text_pdf"} else ""
+    machine_readable = bool(extracted_text.strip())
     return {
         "source_type": "bank_statement",
         "source_file_hash": _file_hash(pdf_bytes),
-        "status": "OCR_READY_FOR_EXTRACTION" if provider_ready else "OCR_PROVIDER_REQUIRED",
-        "ocr_provider": provider or None,
-        "can_ingest": False,
+        "status": (
+            "TEXT_PDF_READY_FOR_REVIEW"
+            if machine_readable
+            else "OCR_READY_FOR_EXTRACTION" if provider_ready else "OCR_PROVIDER_REQUIRED"
+        ),
+        "ocr_provider": provider or ("text_pdf" if machine_readable else None),
+        "can_ingest": machine_readable,
         "recommended_action": (
-            "Run OCR extraction, review the extracted rows, then ingest only after CA approval."
+            "Extract text rows, review normalized bank transactions, then ingest only after CA approval."
+            if machine_readable
+            else "Run OCR extraction, review the extracted rows, then ingest only after CA approval."
             if provider_ready
             else "Connect an OCR provider or upload machine-readable CSV/XLSX bank data. Scanned bank statements must be reviewed by a CA before ingestion."
         ),
@@ -491,9 +646,113 @@ async def extract_bank_pdf_with_ocr(pdf_bytes: bytes) -> dict[str, Any]:
     provider = intake.get("ocr_provider")
     if not provider:
         raise DataRefineryError("OCR_PROVIDER is not configured.")
-    raise DataRefineryError(
-        f"{provider} OCR adapter is configured but live extraction requires provider credentials and implementation-specific document model setup."
+    if provider == "text_pdf":
+        text = _extract_text_from_pdf_bytes(pdf_bytes)
+    elif provider == "aws_textract":
+        text = await _extract_text_with_aws_textract(pdf_bytes)
+    elif provider == "google_document_ai":
+        text = await _extract_text_with_google_document_ai(pdf_bytes)
+    elif provider == "azure_document_intelligence":
+        text = await _extract_text_with_azure_document_intelligence(pdf_bytes)
+    else:
+        raise DataRefineryError(f"Unsupported OCR provider: {provider}.")
+
+    rows = _parse_bank_statement_text(text)
+    headers = ["date", "description", "reference", "amount"]
+    csv_buffer = io.StringIO()
+    writer = csv.DictWriter(csv_buffer, fieldnames=headers)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+    preview = build_refinery_preview(
+        csv_buffer.getvalue().encode("utf-8"),
+        source_type="bank_statement",
+        column_mapping={
+            "date": "date",
+            "description": "description",
+            "reference": "reference",
+            "amount": "amount",
+        },
     )
+    return {
+        **intake,
+        "status": "EXTRACTED_REVIEW_REQUIRED",
+        "raw_text_excerpt": text[:2000],
+        "extracted_rows": rows[:PREVIEW_ROW_LIMIT],
+        "preview": preview,
+        "can_ingest": False,
+        "recommended_action": "Review extracted rows, correct OCR mistakes, export approved CSV, then ingest into the engagement.",
+    }
+
+
+def _extract_text_from_pdf_bytes(pdf_bytes: bytes) -> str:
+    try:
+        from pypdf import PdfReader  # type: ignore
+    except ImportError:
+        return ""
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        return ""
+
+
+async def _extract_text_with_aws_textract(pdf_bytes: bytes) -> str:
+    settings = get_settings()
+    try:
+        import aiobotocore.session  # type: ignore
+    except ImportError as exc:
+        raise DataRefineryError("AWS Textract extraction requires aiobotocore to be installed.") from exc
+    session = aiobotocore.session.get_session()
+    async with session.create_client("textract", region_name=settings.aws_textract_region or settings.aws_region) as client:
+        response = await client.detect_document_text(Document={"Bytes": pdf_bytes})
+    lines = [
+        block.get("Text", "")
+        for block in response.get("Blocks", [])
+        if block.get("BlockType") == "LINE" and block.get("Text")
+    ]
+    if not lines:
+        raise DataRefineryError("AWS Textract returned no readable lines.")
+    return "\n".join(lines)
+
+
+async def _extract_text_with_google_document_ai(pdf_bytes: bytes) -> str:
+    if not get_settings().google_document_ai_processor:
+        raise DataRefineryError("GOOGLE_DOCUMENT_AI_PROCESSOR is required for Google Document AI OCR.")
+    raise DataRefineryError("Google Document AI adapter contract is configured; install google-cloud-documentai and provide processor credentials before live extraction.")
+
+
+async def _extract_text_with_azure_document_intelligence(pdf_bytes: bytes) -> str:
+    settings = get_settings()
+    if not settings.azure_document_intelligence_endpoint or not settings.azure_document_intelligence_key:
+        raise DataRefineryError("Azure Document Intelligence endpoint and key are required for OCR.")
+    raise DataRefineryError("Azure Document Intelligence adapter contract is configured; install azure-ai-documentintelligence before live extraction.")
+
+
+def _parse_bank_statement_text(text: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    line_re = re.compile(
+        r"(?P<date>\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})\s+"
+        r"(?P<description>.*?)\s+"
+        r"(?P<amount>\(?[-+]?(?:\d{1,3}(?:,\d{2,3})+|\d+)(?:\.\d{1,2})?\)?(?:\s*(?:CR|DR|credit|debit))?)\s*$",
+        re.IGNORECASE,
+    )
+    for line in text.splitlines():
+        cleaned = re.sub(r"\s+", " ", line).strip()
+        match = line_re.search(cleaned)
+        if not match:
+            continue
+        description = match.group("description").strip()
+        reference_match = re.search(r"\b(?:UTR|NEFT|IMPS|UPI|CHQ|REF)[\s:/-]*([A-Z0-9-]{4,})", description, re.IGNORECASE)
+        rows.append({
+            "date": match.group("date"),
+            "description": description[:240],
+            "reference": reference_match.group(1) if reference_match else hashlib.sha256(cleaned.encode()).hexdigest()[:12],
+            "amount": match.group("amount"),
+        })
+    if not rows:
+        raise DataRefineryError("OCR/text extraction completed, but no bank transaction rows matched Arkashri's parser.")
+    return rows
 
 
 def _category_breakdown(rows: list[dict[str, Any]]) -> dict[str, int]:

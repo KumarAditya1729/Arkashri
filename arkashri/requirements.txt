@@ -48,6 +48,7 @@ circuitbreaker==2.0.0
 # File Processing
 python-magic==0.4.27
 pillow==10.1.0
+pypdf==4.3.1
 
 # Email & Notifications
 aiosmtplib==3.0.1

@@ -7,7 +7,12 @@ import pytest
 from sqlalchemy import select
 
 from arkashri.models import AuditEvent, Engagement, EngagementStatus, EngagementType, StandardsFramework, Transaction
-from arkashri.services.data_refinery import MAX_UPLOAD_BYTES, build_excel_refinery_preview, build_refinery_preview
+from arkashri.services.data_refinery import (
+    MAX_UPLOAD_BYTES,
+    _parse_bank_statement_text,
+    build_excel_refinery_preview,
+    build_refinery_preview,
+)
 
 
 def _csv_bytes() -> bytes:
@@ -26,6 +31,16 @@ def _xlsx_bytes() -> bytes:
         zf.writestr("xl/_rels/workbook.xml.rels", """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>""")
         zf.writestr("xl/worksheets/sheet1.xml", """<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Txn Date</t></is></c><c r="B1" t="inlineStr"><is><t>Narration</t></is></c><c r="C1" t="inlineStr"><is><t>Voucher No</t></is></c><c r="D1" t="inlineStr"><is><t>Credit</t></is></c><c r="E1" t="inlineStr"><is><t>Ledger Name</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>2026-04-01</t></is></c><c r="B2" t="inlineStr"><is><t>Sales receipt</t></is></c><c r="C2" t="inlineStr"><is><t>S-1</t></is></c><c r="D2"><v>100000</v></c><c r="E2" t="inlineStr"><is><t>Sales</t></is></c></row></sheetData></worksheet>""")
         zf.writestr("xl/worksheets/sheet2.xml", """<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Txn Date</t></is></c><c r="B1" t="inlineStr"><is><t>Narration</t></is></c><c r="C1" t="inlineStr"><is><t>Voucher No</t></is></c><c r="D1" t="inlineStr"><is><t>Debit</t></is></c><c r="E1" t="inlineStr"><is><t>Ledger Name</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>2026-04-02</t></is></c><c r="B2" t="inlineStr"><is><t>Bank payment</t></is></c><c r="C2" t="inlineStr"><is><t>B-1</t></is></c><c r="D2"><v>50000</v></c><c r="E2" t="inlineStr"><is><t>HDFC Bank</t></is></c></row></sheetData></worksheet>""")
+    return buffer.getvalue()
+
+
+def _messy_xlsx_bytes() -> bytes:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("[Content_Types].xml", """<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>""")
+        zf.writestr("xl/workbook.xml", """<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="MessyExport" sheetId="1" r:id="rId1"/></sheets></workbook>""")
+        zf.writestr("xl/_rels/workbook.xml.rels", """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>""")
+        zf.writestr("xl/worksheets/sheet1.xml", """<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Exported from ERP</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>Txn Date</t></is></c><c r="B2" t="inlineStr"><is><t>Narration</t></is></c><c r="C2" t="inlineStr"><is><t>Voucher No</t></is></c><c r="D2" t="inlineStr"><is><t>Amount</t></is></c></row><row r="3"><c r="A3"><v>46113</v></c><c r="B3" t="inlineStr"><is><t>NEFT customer receipt</t></is></c><c r="C3" t="inlineStr"><is><t>N-1</t></is></c><c r="D3"><v>25000</v></c></row></sheetData></worksheet>""")
     return buffer.getvalue()
 
 
@@ -68,6 +83,40 @@ def test_excel_multi_sheet_preview_maps_workbook() -> None:
     assert {sheet["sheet_name"] for sheet in preview["sheets"]} == {"Sales", "Bank"}
     assert all("readiness_score" in sheet for sheet in preview["sheets"])
     assert all("can_ingest" in sheet for sheet in preview["sheets"])
+
+
+def test_excel_preview_detects_header_row_and_profiles_columns() -> None:
+    preview = build_excel_refinery_preview(_messy_xlsx_bytes(), source_type="bank_statement")
+
+    sheet = preview["sheets"][0]
+    assert sheet["sheet_name"] == "MessyExport"
+    assert sheet["header_row_number"] == 2
+    assert sheet["audit_ready_rows"] == 1
+    assert sheet["column_profiles"]["Txn Date"]["inferred_type"] == "date"
+    assert sheet["quality_dimensions"]["mapped_field_count"] >= 4
+
+
+def test_refinery_preview_returns_cleaning_suggestions_for_missing_gstin() -> None:
+    payload = (
+        "Txn Date,Narration,Voucher No,Amount\n"
+        "2026-04-01,Sales receipt,RCPT-001,150000.00\n"
+    ).encode("utf-8")
+
+    preview = build_refinery_preview(payload, source_type="sales_register")
+
+    assert preview["quality_dimensions"]["completeness_score"] == 100
+    assert any(item["title"] == "Add GSTIN mapping" for item in preview["cleaning_suggestions"])
+
+
+def test_bank_statement_text_parser_extracts_rows() -> None:
+    rows = _parse_bank_statement_text(
+        "01/04/2026 UPI REF 1234 CUSTOMER RECEIPT 12,500.00 CR\n"
+        "02/04/2026 CHQ 456 RENT PAYMENT 5,000.00 DR\n"
+    )
+
+    assert len(rows) == 2
+    assert rows[0]["reference"] == "1234"
+    assert rows[1]["amount"].endswith("DR")
 
 
 @pytest.mark.asyncio
