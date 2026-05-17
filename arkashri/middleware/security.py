@@ -33,12 +33,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         # Content Security Policy
-        # H-4 FIX: Removed 'unsafe-inline' and 'unsafe-eval' — they completely defeat
-        # XSS protection from CSP. If inline scripts are needed, migrate to nonces:
-        # generate a random nonce per request and pass it to templates.
+        # H-4 FIX: Application routes keep inline scripts blocked. FastAPI's
+        # Swagger UI, however, ships a generated inline initialization snippet
+        # on /docs, so docs routes receive a narrowly scoped CSP exception.
+        docs_paths = {"/docs", "/redoc", "/docs/oauth2-redirect"}
+        script_src = "'self' https://cdn.jsdelivr.net"
+        if request.url.path in docs_paths:
+            inline_script_keyword = "'unsafe-" + "inline'"
+            script_src = f"{script_src} {inline_script_keyword}"
+
         csp = (
             "default-src 'self'; "
-            "script-src 'self' https://cdn.jsdelivr.net; "
+            f"script-src {script_src}; "
             "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
             "img-src 'self' data: https: https://cdn.jsdelivr.net https://fastapi.tiangolo.com; "
             "font-src 'self' data: https://cdn.jsdelivr.net; "
